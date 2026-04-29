@@ -1012,181 +1012,181 @@ export const syncMailboxMessagesByDate = async (
 };
 
 
-type GraphMessage = {
-  id: string;
-  subject?: string;
-  bodyPreview?: string;
-  receivedDateTime?: string;
-  sentDateTime?: string;
-  sender?: { emailAddress?: any };
-  from?: { emailAddress?: any };
-  toRecipients?: any[];
-  ccRecipients?: any[];
-  bccRecipients?: any[];
-  hasAttachments?: boolean;
-  isRead?: boolean;
-  isDraft?: boolean;
-  webLink?: string;
-  conversationId?: string;
-  importance?: string;
-  attachments?: any[];
-  body?: {
-    content?: string;
-    contentType?: string;
-  };
-  "@removed"?: {
-    reason: string;
-  };
-};
+// type GraphMessage = {
+//   id: string;
+//   subject?: string;
+//   bodyPreview?: string;
+//   receivedDateTime?: string;
+//   sentDateTime?: string;
+//   sender?: { emailAddress?: any };
+//   from?: { emailAddress?: any };
+//   toRecipients?: any[];
+//   ccRecipients?: any[];
+//   bccRecipients?: any[];
+//   hasAttachments?: boolean;
+//   isRead?: boolean;
+//   isDraft?: boolean;
+//   webLink?: string;
+//   conversationId?: string;
+//   importance?: string;
+//   attachments?: any[];
+//   body?: {
+//     content?: string;
+//     contentType?: string;
+//   };
+//   "@removed"?: {
+//     reason: string;
+//   };
+// };
 
-type GraphResponse = {
-  value: GraphMessage[];
-  "@odata.nextLink"?: string;
-  "@odata.deltaLink"?: string;
-};
+// type GraphResponse = {
+//   value: GraphMessage[];
+//   "@odata.nextLink"?: string;
+//   "@odata.deltaLink"?: string;
+// };
 
 
-export const syncMailboxMessagesDelta = async (
-  req: AuthRequest,
-  res: Response
-): Promise<void> => {
-  try {
-    if (!req.user?.email) {
-      res.status(401).json({
-        success: false,
-        message: "User not authenticated",
-      });
-      return;
-    }
+// export const syncMailboxMessagesDelta = async (
+//   req: AuthRequest,
+//   res: Response
+// ): Promise<void> => {
+//   try {
+//     if (!req.user?.email) {
+//       res.status(401).json({
+//         success: false,
+//         message: "User not authenticated",
+//       });
+//       return;
+//     }
 
-    const { email, _id } = req.user;
+//     const { email, _id } = req.user;
 
-    const accessToken = await getAppOnlyToken();
+//     const accessToken = await getAppOnlyToken();
 
-    // 🔹 Get saved deltaLink
-    const user = await User.findById(_id).select("deltaLink");
+//     // 🔹 Get saved deltaLink
+//     const user = await User.findById(_id).select("deltaLink");
 
-    let url: string | null =
-      user?.deltaLink ||
-      `https://graph.microsoft.com/v1.0/users/${email}/messages/delta`;
+//     let url: string | null =
+//       user?.deltaLink ||
+//       `https://graph.microsoft.com/v1.0/users/${email}/messages/delta`;
 
-    let totalSynced = 0;
-    let bulkOps: any[] = [];
+//     let totalSynced = 0;
+//     let bulkOps: any[] = [];
 
-    while (url) {
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+//     while (url) {
+//       const response = await fetch(url, {
+//         headers: { Authorization: `Bearer ${accessToken}` },
+//       });
 
-      const data = (await response.json()) as GraphResponse;
+//       const data = (await response.json()) as GraphResponse;
 
-      if (!response.ok) {
-        throw new Error(
-          (data as any)?.error?.message || "Graph API error"
-        );
-      }
+//       if (!response.ok) {
+//         throw new Error(
+//           (data as any)?.error?.message || "Graph API error"
+//         );
+//       }
 
-      const messages = data.value || [];
+//       const messages = data.value || [];
 
-      // 🔹 Process in chunks (parallel)
-      const chunkSize = 10;
+//       // 🔹 Process in chunks (parallel)
+//       const chunkSize = 10;
 
-      for (let i = 0; i < messages.length; i += chunkSize) {
-        const chunk = messages.slice(i, i + chunkSize);
+//       for (let i = 0; i < messages.length; i += chunkSize) {
+//         const chunk = messages.slice(i, i + chunkSize);
 
-        await Promise.all(
-          chunk.map(async (msg: GraphMessage) => {
+//         await Promise.all(
+//           chunk.map(async (msg: GraphMessage) => {
 
-            // 🔥 Handle deleted emails
-            if (msg["@removed"]) {
-              bulkOps.push({
-                deleteOne: {
-                  filter: { graphId: msg.id },
-                },
-              });
-              return;
-            }
+//             // 🔥 Handle deleted emails
+//             if (msg["@removed"]) {
+//               bulkOps.push({
+//                 deleteOne: {
+//                   filter: { graphId: msg.id },
+//                 },
+//               });
+//               return;
+//             }
 
-            // 🔹 Process attachments
-            await processMessageAttachments(accessToken, email, msg);
+//             // 🔹 Process attachments
+//             await processMessageAttachments(accessToken, email, msg);
 
-            bulkOps.push({
-              updateOne: {
-                filter: { graphId: msg.id },
-                update: {
-                  $set: {
-                    graphId: msg.id,
-                    sender: msg.sender?.emailAddress,
-                    from: msg.from?.emailAddress,
-                    toRecipients:
-                      msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                    ccRecipients:
-                      msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                    bccRecipients:
-                      msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-                    subject: msg.subject,
-                    bodyPreview: msg.bodyPreview,
-                    receivedDateTime: msg.receivedDateTime,
-                    sentDateTime: msg.sentDateTime,
-                    hasAttachments: msg.hasAttachments,
-                    isRead: msg.isRead,
-                    isDraft: msg.isDraft,
-                    webLink: msg.webLink,
-                    conversationId: msg.conversationId,
-                    importance: msg.importance,
-                    attachments: msg.attachments,
-                    crmUser: _id,
-                    normalizedSubject: normalizeSubject(msg.subject || ""),
-                    "body.content": msg.body?.content,
-                    "body.contentType": msg.body?.contentType,
-                  },
-                },
-                upsert: true,
-              },
-            });
-          })
-        );
-      }
+//             bulkOps.push({
+//               updateOne: {
+//                 filter: { graphId: msg.id },
+//                 update: {
+//                   $set: {
+//                     graphId: msg.id,
+//                     sender: msg.sender?.emailAddress,
+//                     from: msg.from?.emailAddress,
+//                     toRecipients:
+//                       msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+//                     ccRecipients:
+//                       msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+//                     bccRecipients:
+//                       msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+//                     subject: msg.subject,
+//                     bodyPreview: msg.bodyPreview,
+//                     receivedDateTime: msg.receivedDateTime,
+//                     sentDateTime: msg.sentDateTime,
+//                     hasAttachments: msg.hasAttachments,
+//                     isRead: msg.isRead,
+//                     isDraft: msg.isDraft,
+//                     webLink: msg.webLink,
+//                     conversationId: msg.conversationId,
+//                     importance: msg.importance,
+//                     attachments: msg.attachments,
+//                     crmUser: _id,
+//                     normalizedSubject: normalizeSubject(msg.subject || ""),
+//                     "body.content": msg.body?.content,
+//                     "body.contentType": msg.body?.contentType,
+//                   },
+//                 },
+//                 upsert: true,
+//               },
+//             });
+//           })
+//         );
+//       }
 
-      totalSynced += messages.length;
+//       totalSynced += messages.length;
 
-      // 🔹 Batch write (performance)
-      if (bulkOps.length >= 500) {
-        await Email.bulkWrite(bulkOps);
-        bulkOps = [];
-      }
+//       // 🔹 Batch write (performance)
+//       if (bulkOps.length >= 500) {
+//         await Email.bulkWrite(bulkOps);
+//         bulkOps = [];
+//       }
 
-      // 🔹 Pagination
-      url = data["@odata.nextLink"] || null;
+//       // 🔹 Pagination
+//       url = data["@odata.nextLink"] || null;
 
-      // 🔹 Save deltaLink at end
-      if (!url && data["@odata.deltaLink"]) {
-        await User.findByIdAndUpdate(_id, {
-          deltaLink: data["@odata.deltaLink"],
-        });
-      }
-    }
+//       // 🔹 Save deltaLink at end
+//       if (!url && data["@odata.deltaLink"]) {
+//         await User.findByIdAndUpdate(_id, {
+//           deltaLink: data["@odata.deltaLink"],
+//         });
+//       }
+//     }
 
-    // Final flush
-    if (bulkOps.length) {
-      await Email.bulkWrite(bulkOps);
-    }
+//     // Final flush
+//     if (bulkOps.length) {
+//       await Email.bulkWrite(bulkOps);
+//     }
 
-    res.status(200).json({
-      success: true,
-      message: "Delta sync completed",
-      totalSynced,
-    });
+//     res.status(200).json({
+//       success: true,
+//       message: "Delta sync completed",
+//       totalSynced,
+//     });
 
-  } catch (error: any) {
-    console.error("Delta Sync Error:", error);
+//   } catch (error: any) {
+//     console.error("Delta Sync Error:", error);
 
-    res.status(500).json({
-      success: false,
-      message: error.message || "Internal Server Error",
-    });
-  }
-};
+//     res.status(500).json({
+//       success: false,
+//       message: error.message || "Internal Server Error",
+//     });
+//   }
+// };
 
 
 export const syncMailboxMessages = async (
