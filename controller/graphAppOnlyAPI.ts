@@ -896,7 +896,6 @@ export const syncMailboxMessagesByDate = async (
 
     const accessToken = await getAppOnlyToken();
 
-    // 1. Get last synced email
     const lastEmail = await Email.findOne({ crmUser: _id })
       .sort({ receivedDateTime: -1 })
       .select("receivedDateTime")
@@ -915,6 +914,10 @@ export const syncMailboxMessagesByDate = async (
     let totalSynced = 0;
     let bulkOps: any[] = [];
 
+    // 🆕 Track new + updated
+    let newEmails: any[] = [];
+    let updatedEmails: any[] = [];
+
     while (url) {
       const graphResponse = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -931,7 +934,15 @@ export const syncMailboxMessagesByDate = async (
 
       totalSynced += messages.length;
 
-      // 🔹 Process attachments in chunks
+      // 🔹 Get existing emails from DB
+      const ids = messages.map((m: any) => m.id);
+      const existingDocs = await Email.find({
+        graphId: { $in: ids },
+      }).select("graphId");
+
+      const existingIds = new Set(existingDocs.map((d) => d.graphId));
+
+      // 🔹 Process attachments
       const chunkSize = 10;
       for (let i = 0; i < messages.length; i += chunkSize) {
         const chunk = messages.slice(i, i + chunkSize);
@@ -943,62 +954,81 @@ export const syncMailboxMessagesByDate = async (
       }
 
       // 🔹 Prepare bulk ops
-      const ops = messages.map((msg: any) => ({
-        updateOne: {
-          filter: { graphId: msg.id },
-          update: {
-            $set: {
-              graphId: msg.id,
-              sender: msg.sender?.emailAddress,
-              from: msg.from?.emailAddress,
-              toRecipients:
-                msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-              ccRecipients:
-                msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-              bccRecipients:
-                msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-              subject: msg.subject,
-              bodyPreview: msg.bodyPreview,
-              receivedDateTime: msg.receivedDateTime,
-              sentDateTime: msg.sentDateTime,
-              hasAttachments: msg.hasAttachments,
-              isRead: msg.isRead,
-              isDraft: msg.isDraft,
-              webLink: msg.webLink,
-              conversationId: msg.conversationId,
-              importance: msg.importance,
-              attachments: msg.attachments,
-              crmUser: _id,
-              normalizedSubject: normalizeSubject(msg.subject),
-              "body.content": msg.body?.content,
-              "body.contentType": msg.body?.contentType,
+      const ops = messages.map((msg: any) => {
+        const isExisting = existingIds.has(msg.id);
+
+        const emailData = {
+          graphId: msg.id,
+          subject: msg.subject,
+          from: msg.from?.emailAddress,
+          receivedDateTime: msg.receivedDateTime,
+          webLink: msg.webLink,
+        };
+
+        if (isExisting) {
+          updatedEmails.push(emailData);
+        } else {
+          newEmails.push(emailData);
+        }
+
+        return {
+          updateOne: {
+            filter: { graphId: msg.id },
+            update: {
+              $set: {
+                graphId: msg.id,
+                sender: msg.sender?.emailAddress,
+                from: msg.from?.emailAddress,
+                toRecipients:
+                  msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                ccRecipients:
+                  msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                bccRecipients:
+                  msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                subject: msg.subject,
+                bodyPreview: msg.bodyPreview,
+                receivedDateTime: msg.receivedDateTime,
+                sentDateTime: msg.sentDateTime,
+                hasAttachments: msg.hasAttachments,
+                isRead: msg.isRead,
+                isDraft: msg.isDraft,
+                webLink: msg.webLink,
+                conversationId: msg.conversationId,
+                importance: msg.importance,
+                attachments: msg.attachments,
+                crmUser: _id,
+                normalizedSubject: normalizeSubject(msg.subject),
+                "body.content": msg.body?.content,
+                "body.contentType": msg.body?.contentType,
+              },
             },
+            upsert: true,
           },
-          upsert: true,
-        },
-      }));
+        };
+      });
 
       bulkOps.push(...ops);
 
-      // 🔹 Flush in batches (avoid memory issue)
       if (bulkOps.length >= 500) {
         await Email.bulkWrite(bulkOps);
         bulkOps = [];
       }
 
-      // 🔹 Next page
       url = data["@odata.nextLink"] || null;
     }
 
-    // Final flush
     if (bulkOps.length) {
       await Email.bulkWrite(bulkOps);
     }
 
     res.status(200).json({
       success: true,
-      message: `Synced all latest messages for ${email}`,
+      message: `Synced emails for ${email}`,
       totalSynced,
+      newCount: newEmails.length,
+      updatedCount: updatedEmails.length,
+      newEmails,        // 🆕 newly inserted
+      updatedEmails,    // 🔄 updated
     });
 
   } catch (error: any) {
