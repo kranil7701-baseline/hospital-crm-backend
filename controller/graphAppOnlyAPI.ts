@@ -896,6 +896,7 @@ export const syncMailboxMessagesByDate = async (
 
     const accessToken = await getAppOnlyToken();
 
+    // 🔹 Get last synced email
     const lastEmail = await Email.findOne({ crmUser: _id })
       .sort({ receivedDateTime: -1 })
       .select("receivedDateTime")
@@ -914,7 +915,6 @@ export const syncMailboxMessagesByDate = async (
     let totalSynced = 0;
     let bulkOps: any[] = [];
 
-    // 🆕 Track new + updated
     let newEmails: any[] = [];
     let updatedEmails: any[] = [];
 
@@ -934,15 +934,18 @@ export const syncMailboxMessagesByDate = async (
 
       totalSynced += messages.length;
 
-      // 🔹 Get existing emails from DB
+      // 🔹 Fetch existing emails
       const ids = messages.map((m: any) => m.id);
+
       const existingDocs = await Email.find({
         graphId: { $in: ids },
-      }).select("graphId");
+      }).lean();
 
-      const existingIds = new Set(existingDocs.map((d) => d.graphId));
+      const existingMap = new Map(
+        existingDocs.map((doc: any) => [doc.graphId, doc])
+      );
 
-      // 🔹 Process attachments
+      // 🔹 Process attachments (parallel chunks)
       const chunkSize = 10;
       for (let i = 0; i < messages.length; i += chunkSize) {
         const chunk = messages.slice(i, i + chunkSize);
@@ -953,9 +956,9 @@ export const syncMailboxMessagesByDate = async (
         );
       }
 
-      // 🔹 Prepare bulk ops
-      const ops = messages.map((msg: any) => {
-        const isExisting = existingIds.has(msg.id);
+      // 🔹 Process each message
+      for (const msg of messages) {
+        const existing = existingMap.get(msg.id);
 
         const emailData = {
           graphId: msg.id,
@@ -965,58 +968,112 @@ export const syncMailboxMessagesByDate = async (
           webLink: msg.webLink,
         };
 
-        if (isExisting) {
-          updatedEmails.push(emailData);
-        } else {
+        const isNew = !existing;
+
+        const isChanged =
+          existing &&
+          (
+            existing.isRead !== msg.isRead ||
+            existing.subject !== msg.subject ||
+            existing.bodyPreview !== msg.bodyPreview ||
+            existing.importance !== msg.importance ||
+            existing.hasAttachments !== msg.hasAttachments ||
+            existing.receivedDateTime?.toISOString() !== msg.receivedDateTime
+          );
+
+        // 🆕 NEW
+        if (isNew) {
           newEmails.push(emailData);
+
+          bulkOps.push({
+            updateOne: {
+              filter: { graphId: msg.id },
+              update: {
+                $set: {
+                  graphId: msg.id,
+                  sender: msg.sender?.emailAddress,
+                  from: msg.from?.emailAddress,
+                  toRecipients:
+                    msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                  ccRecipients:
+                    msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                  bccRecipients:
+                    msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                  subject: msg.subject,
+                  bodyPreview: msg.bodyPreview,
+                  receivedDateTime: msg.receivedDateTime,
+                  sentDateTime: msg.sentDateTime,
+                  hasAttachments: msg.hasAttachments,
+                  isRead: msg.isRead,
+                  isDraft: msg.isDraft,
+                  webLink: msg.webLink,
+                  conversationId: msg.conversationId,
+                  importance: msg.importance,
+                  attachments: msg.attachments,
+                  crmUser: _id,
+                  normalizedSubject: normalizeSubject(msg.subject),
+                  "body.content": msg.body?.content,
+                  "body.contentType": msg.body?.contentType,
+                },
+              },
+              upsert: true,
+            },
+          });
         }
 
-        return {
-          updateOne: {
-            filter: { graphId: msg.id },
-            update: {
-              $set: {
-                graphId: msg.id,
-                sender: msg.sender?.emailAddress,
-                from: msg.from?.emailAddress,
-                toRecipients:
-                  msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                ccRecipients:
-                  msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                bccRecipients:
-                  msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-                subject: msg.subject,
-                bodyPreview: msg.bodyPreview,
-                receivedDateTime: msg.receivedDateTime,
-                sentDateTime: msg.sentDateTime,
-                hasAttachments: msg.hasAttachments,
-                isRead: msg.isRead,
-                isDraft: msg.isDraft,
-                webLink: msg.webLink,
-                conversationId: msg.conversationId,
-                importance: msg.importance,
-                attachments: msg.attachments,
-                crmUser: _id,
-                normalizedSubject: normalizeSubject(msg.subject),
-                "body.content": msg.body?.content,
-                "body.contentType": msg.body?.contentType,
+        // 🔄 UPDATED ONLY IF CHANGED
+        else if (isChanged) {
+          updatedEmails.push(emailData);
+
+          bulkOps.push({
+            updateOne: {
+              filter: { graphId: msg.id },
+              update: {
+                $set: {
+                  graphId: msg.id,
+                  sender: msg.sender?.emailAddress,
+                  from: msg.from?.emailAddress,
+                  toRecipients:
+                    msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                  ccRecipients:
+                    msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                  bccRecipients:
+                    msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                  subject: msg.subject,
+                  bodyPreview: msg.bodyPreview,
+                  receivedDateTime: msg.receivedDateTime,
+                  sentDateTime: msg.sentDateTime,
+                  hasAttachments: msg.hasAttachments,
+                  isRead: msg.isRead,
+                  isDraft: msg.isDraft,
+                  webLink: msg.webLink,
+                  conversationId: msg.conversationId,
+                  importance: msg.importance,
+                  attachments: msg.attachments,
+                  crmUser: _id,
+                  normalizedSubject: normalizeSubject(msg.subject),
+                  "body.content": msg.body?.content,
+                  "body.contentType": msg.body?.contentType,
+                },
               },
             },
-            upsert: true,
-          },
-        };
-      });
+          });
+        }
 
-      bulkOps.push(...ops);
+        // ❌ If unchanged → do nothing
+      }
 
+      // 🔹 Batch write
       if (bulkOps.length >= 500) {
         await Email.bulkWrite(bulkOps);
         bulkOps = [];
       }
 
+      // 🔹 Next page
       url = data["@odata.nextLink"] || null;
     }
 
+    // 🔹 Final flush
     if (bulkOps.length) {
       await Email.bulkWrite(bulkOps);
     }
@@ -1027,8 +1084,8 @@ export const syncMailboxMessagesByDate = async (
       totalSynced,
       newCount: newEmails.length,
       updatedCount: updatedEmails.length,
-      newEmails,        // 🆕 newly inserted
-      updatedEmails,    // 🔄 updated
+      newEmails,
+      updatedEmails,
     });
 
   } catch (error: any) {
