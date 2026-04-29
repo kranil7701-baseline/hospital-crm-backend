@@ -911,7 +911,8 @@ export const syncMailboxMessagesByDate = async (
     const select =
       "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
 
-    let url = `https://graph.microsoft.com/v1.0/users/${email}/messages?$orderby=receivedDateTime desc&$select=${select}${filter}`;
+    // 🔥 Reduced API calls using $top
+    let url = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=50&$orderby=receivedDateTime desc&$select=${select}${filter}`;
 
     let totalSynced = 0;
     let bulkOps: any[] = [];
@@ -935,29 +936,31 @@ export const syncMailboxMessagesByDate = async (
 
       totalSynced += messages.length;
 
-      // 🔹 Fetch existing emails
+      // 🔹 Fetch only required fields (faster)
       const ids = messages.map((m: any) => m.id);
 
-      const existingDocs = await Email.find({
-        graphId: { $in: ids },
-      }).lean();
+      const existingDocs = await Email.find(
+        { graphId: { $in: ids } },
+        {
+          graphId: 1,
+          isRead: 1,
+          subject: 1,
+          importance: 1,
+          hasAttachments: 1,
+        }
+      ).lean();
 
       const existingMap = new Map(
         existingDocs.map((doc: any) => [doc.graphId, doc])
       );
 
-      // 🔹 Process attachments (parallel)
-      const chunkSize = 10;
-      for (let i = 0; i < messages.length; i += chunkSize) {
-        const chunk = messages.slice(i, i + chunkSize);
-        await Promise.all(
-          chunk.map((msg: any) =>
-            processMessageAttachments(accessToken, email, msg)
-          )
-        );
+      // 🔥 NON-BLOCKING attachment processing (huge speed boost)
+      for (const msg of messages) {
+        processMessageAttachments(accessToken, email, msg)
+          .catch(err => console.error("Attachment error:", err));
       }
 
-      // 🔹 Process each message
+      // 🔹 Process messages
       for (const msg of messages) {
         const existing = existingMap.get(msg.id);
 
@@ -971,7 +974,6 @@ export const syncMailboxMessagesByDate = async (
 
         const isNew = !existing;
 
-        // ✅ FIXED CHANGE DETECTION
         const isChanged =
           existing &&
           (
@@ -981,7 +983,7 @@ export const syncMailboxMessagesByDate = async (
             existing.hasAttachments !== msg.hasAttachments
           );
 
-        // 🆕 NEW EMAIL
+        // 🆕 NEW
         if (isNew) {
           newEmails.push(emailData);
 
@@ -993,12 +995,9 @@ export const syncMailboxMessagesByDate = async (
                   graphId: msg.id,
                   sender: msg.sender?.emailAddress,
                   from: msg.from?.emailAddress,
-                  toRecipients:
-                    msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                  ccRecipients:
-                    msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                  bccRecipients:
-                    msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                  toRecipients: msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                  ccRecipients: msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                  bccRecipients: msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
                   subject: msg.subject,
                   bodyPreview: msg.bodyPreview,
                   receivedDateTime: msg.receivedDateTime,
@@ -1021,7 +1020,7 @@ export const syncMailboxMessagesByDate = async (
           });
         }
 
-        // 🔄 UPDATED ONLY IF ACTUAL CHANGE
+        // 🔄 UPDATED
         else if (isChanged) {
           updatedEmails.push(emailData);
 
@@ -1030,46 +1029,24 @@ export const syncMailboxMessagesByDate = async (
               filter: { graphId: msg.id },
               update: {
                 $set: {
-                  graphId: msg.id,
-                  sender: msg.sender?.emailAddress,
-                  from: msg.from?.emailAddress,
-                  toRecipients:
-                    msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                  ccRecipients:
-                    msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                  bccRecipients:
-                    msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-                  subject: msg.subject,
-                  bodyPreview: msg.bodyPreview,
-                  receivedDateTime: msg.receivedDateTime,
-                  sentDateTime: msg.sentDateTime,
-                  hasAttachments: msg.hasAttachments,
                   isRead: msg.isRead,
-                  isDraft: msg.isDraft,
-                  webLink: msg.webLink,
-                  conversationId: msg.conversationId,
+                  subject: msg.subject,
                   importance: msg.importance,
-                  attachments: msg.attachments,
-                  crmUser: _id,
-                  normalizedSubject: normalizeSubject(msg.subject),
-                  "body.content": msg.body?.content,
-                  "body.contentType": msg.body?.contentType,
+                  hasAttachments: msg.hasAttachments,
+                  bodyPreview: msg.bodyPreview,
                 },
               },
             },
           });
         }
-
-        // ❌ unchanged → skip
       }
 
-      // 🔹 Batch write
-      if (bulkOps.length >= 500) {
+      // 🔥 Faster batch writes
+      if (bulkOps.length >= 100) {
         await Email.bulkWrite(bulkOps);
         bulkOps = [];
       }
 
-      // 🔹 Next page
       url = data["@odata.nextLink"] || null;
     }
 
