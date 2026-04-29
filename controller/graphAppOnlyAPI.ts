@@ -2,8 +2,7 @@ import type { Request, Response } from "express";
 import * as msal from "@azure/msal-node";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Email from "../model/email.ts";
-import fs from "fs";
-import path from "path";
+import User from "../model/User.ts";
 
 const getMsalConfig = () => {
   let privateKey = process.env.MS_GRAPH_PRIVATE_KEY;
@@ -216,7 +215,7 @@ const processMessageAttachments = async (
                 console.log(
                   `    * Found match after URL decoding: ${decodedCid}`,
                 );
-            } catch (e) {}
+            } catch (e) { }
           }
 
           // Last resort: search for ANY attachment that contains this CID string in its name or ID
@@ -247,7 +246,7 @@ const processMessageAttachments = async (
                   (a: any) =>
                     (a.contentId &&
                       a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                        cleanCid) ||
+                      cleanCid) ||
                     (a.name && a.name.toLowerCase() === cleanCid),
                 ),
             );
@@ -256,7 +255,7 @@ const processMessageAttachments = async (
                 (a: any) =>
                   (a.contentId &&
                     a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                      cleanCid) ||
+                    cleanCid) ||
                   (a.name && a.name.toLowerCase() === cleanCid),
               );
               if (batchAtt && batchAtt.fileUrl) {
@@ -288,7 +287,7 @@ const processMessageAttachments = async (
                   (a) =>
                     (a.contentId &&
                       a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                        cleanCid) ||
+                      cleanCid) ||
                     (a.name && a.name.toLowerCase() === cleanCid),
                 );
                 if (threadAtt && threadAtt.fileUrl) {
@@ -323,7 +322,7 @@ const processMessageAttachments = async (
                   (a) =>
                     (a.contentId &&
                       a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                        cleanCid) ||
+                      cleanCid) ||
                     (a.name && a.name.toLowerCase() === cleanCid),
                 );
                 if (globalAtt && globalAtt.fileUrl) {
@@ -699,30 +698,30 @@ export const getSentEmailsFromDB = async (
           searchMatch: {
             $max: search
               ? {
-                  $or: [
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$subject", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                $or: [
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$subject", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$from.address", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$from.address", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$bodyPreview", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$bodyPreview", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                  ],
-                }
+                  },
+                ],
+              }
               : true,
           },
         },
@@ -811,30 +810,30 @@ export const getReceivedEmailsFromDB = async (
           searchMatch: {
             $max: search
               ? {
-                  $or: [
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$subject", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                $or: [
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$subject", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$from.address", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$from.address", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$bodyPreview", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$bodyPreview", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                  ],
-                }
+                  },
+                ],
+              }
               : true,
           },
         },
@@ -879,138 +878,316 @@ export const getReceivedEmailsFromDB = async (
   }
 };
 
+
 export const syncMailboxMessagesByDate = async (
   req: AuthRequest,
-  res: Response,
+  res: Response
 ): Promise<void> => {
   try {
-    if (!req.user || !req.user.email) {
+    if (!req.user?.email) {
       res.status(401).json({
         success: false,
-        message: "User not authenticated or email missing",
+        message: "User not authenticated",
       });
       return;
     }
 
-    const email = req.user.email;
+    const { email, _id } = req.user;
 
-    // 1. Get Application Token
     const accessToken = await getAppOnlyToken();
 
-    // 2. Find the latest email date in our DB to perform an incremental sync
-    const lastEmail = await Email.findOne({ crmUser: req.user._id }).sort({
-      receivedDateTime: -1,
-    });
+    // 1. Get last synced email
+    const lastEmail = await Email.findOne({ crmUser: _id })
+      .sort({ receivedDateTime: -1 })
+      .select("receivedDateTime")
+      .lean();
 
     let filter = "";
-    if (lastEmail && lastEmail.receivedDateTime) {
-      const lastDate = lastEmail.receivedDateTime.toISOString();
-      // Filter for emails received AFTER or AT the last sync time
-      filter = `&$filter=receivedDateTime ge ${lastDate}`;
+    if (lastEmail?.receivedDateTime) {
+      filter = `&$filter=receivedDateTime ge ${lastEmail.receivedDateTime.toISOString()}`;
     }
 
-    // 3. Call Graph API for messages (Incremental Sync)
     const select =
       "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
-    const graphUrl = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=500&$orderby=receivedDateTime desc&$select=${select}${filter}`;
 
-    const graphResponse = await fetch(graphUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    let url = `https://graph.microsoft.com/v1.0/users/${email}/messages?$orderby=receivedDateTime desc&$select=${select}${filter}`;
 
-    const data = await graphResponse.json();
+    let totalSynced = 0;
+    let bulkOps: any[] = [];
 
-    if (!graphResponse.ok) {
-      res.status(graphResponse.status).json({
-        success: false,
-        message: "Failed to fetch messages from Microsoft Graph",
-        error: data,
+    while (url) {
+      const graphResponse = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
-      return;
-    }
 
-    const messages = data.value || [];
+      const data = await graphResponse.json();
 
-    if (messages.length === 0) {
-      res.status(200).json({
-        success: true,
-        message: `No new messages found for ${email} (Incremental)`,
-        count: 0,
-      });
-      return;
-    }
+      if (!graphResponse.ok) {
+        throw new Error(data?.error?.message || "Graph API error");
+      }
 
-    // 4. Process Inline Attachments (CIDs)
-    // Process in chunks to avoid Graph API rate limits but keep it fast
-    (global as any).currentSyncBatch = messages;
-    const chunkSize = 10;
-    for (let i = 0; i < messages.length; i += chunkSize) {
-      const chunk = messages.slice(i, i + chunkSize);
-      await Promise.all(
-        chunk.map((msg: any) =>
-          processMessageAttachments(accessToken, email, msg),
-        ),
-      );
-    }
-    delete (global as any).currentSyncBatch;
+      const messages = data.value || [];
+      if (!messages.length) break;
 
-    // 5. Prepare Bulk Operations to avoid duplicates using graphId
-    const ops = messages.map((msg: any) => ({
-      updateOne: {
-        filter: { graphId: msg.id },
-        update: {
-          $set: {
-            graphId: msg.id,
-            sender: msg.sender?.emailAddress,
-            from: msg.from?.emailAddress,
-            toRecipients:
-              msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-            ccRecipients:
-              msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-            bccRecipients:
-              msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-            subject: msg.subject,
-            bodyPreview: msg.bodyPreview,
-            receivedDateTime: msg.receivedDateTime,
-            sentDateTime: msg.sentDateTime,
-            hasAttachments: msg.hasAttachments,
-            isRead: msg.isRead,
-            isDraft: msg.isDraft,
-            webLink: msg.webLink,
-            conversationId: msg.conversationId,
-            importance: msg.importance,
-            attachments: msg.attachments,
-            crmUser: req.user?._id,
-            normalizedSubject: normalizeSubject(msg.subject),
-            "body.content": msg.body?.content,
-            "body.contentType": msg.body?.contentType,
+      totalSynced += messages.length;
+
+      // 🔹 Process attachments in chunks
+      const chunkSize = 10;
+      for (let i = 0; i < messages.length; i += chunkSize) {
+        const chunk = messages.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map((msg: any) =>
+            processMessageAttachments(accessToken, email, msg)
+          )
+        );
+      }
+
+      // 🔹 Prepare bulk ops
+      const ops = messages.map((msg: any) => ({
+        updateOne: {
+          filter: { graphId: msg.id },
+          update: {
+            $set: {
+              graphId: msg.id,
+              sender: msg.sender?.emailAddress,
+              from: msg.from?.emailAddress,
+              toRecipients:
+                msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+              ccRecipients:
+                msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+              bccRecipients:
+                msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+              subject: msg.subject,
+              bodyPreview: msg.bodyPreview,
+              receivedDateTime: msg.receivedDateTime,
+              sentDateTime: msg.sentDateTime,
+              hasAttachments: msg.hasAttachments,
+              isRead: msg.isRead,
+              isDraft: msg.isDraft,
+              webLink: msg.webLink,
+              conversationId: msg.conversationId,
+              importance: msg.importance,
+              attachments: msg.attachments,
+              crmUser: _id,
+              normalizedSubject: normalizeSubject(msg.subject),
+              "body.content": msg.body?.content,
+              "body.contentType": msg.body?.contentType,
+            },
           },
+          upsert: true,
         },
-        upsert: true,
-      },
-    }));
+      }));
 
-    // 5. Execute Bulk Write
-    const result = await Email.bulkWrite(ops);
+      bulkOps.push(...ops);
+
+      // 🔹 Flush in batches (avoid memory issue)
+      if (bulkOps.length >= 500) {
+        await Email.bulkWrite(bulkOps);
+        bulkOps = [];
+      }
+
+      // 🔹 Next page
+      url = data["@odata.nextLink"] || null;
+    }
+
+    // Final flush
+    if (bulkOps.length) {
+      await Email.bulkWrite(bulkOps);
+    }
 
     res.status(200).json({
       success: true,
-      message: `Successfully synced messages for ${email} (Incremental)`,
-      stats: {
-        totalSynced: messages.length,
-        newlyAdded: result.upsertedCount,
-        updated: result.modifiedCount,
-      },
+      message: `Synced all latest messages for ${email}`,
+      totalSynced,
     });
+
   } catch (error: any) {
-    console.error("Incremental Sync Mailbox Error:", error);
+    console.error("Sync By Date Error:", error);
+
     res.status(500).json({
       success: false,
-      message: "Internal Server Error",
-      error: error.message,
+      message: error.message || "Internal Server Error",
     });
   }
 };
+
+
+type GraphMessage = {
+  id: string;
+  subject?: string;
+  bodyPreview?: string;
+  receivedDateTime?: string;
+  sentDateTime?: string;
+  sender?: { emailAddress?: any };
+  from?: { emailAddress?: any };
+  toRecipients?: any[];
+  ccRecipients?: any[];
+  bccRecipients?: any[];
+  hasAttachments?: boolean;
+  isRead?: boolean;
+  isDraft?: boolean;
+  webLink?: string;
+  conversationId?: string;
+  importance?: string;
+  attachments?: any[];
+  body?: {
+    content?: string;
+    contentType?: string;
+  };
+  "@removed"?: {
+    reason: string;
+  };
+};
+
+type GraphResponse = {
+  value: GraphMessage[];
+  "@odata.nextLink"?: string;
+  "@odata.deltaLink"?: string;
+};
+
+
+export const syncMailboxMessagesDelta = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user?.email) {
+      res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+      return;
+    }
+
+    const { email, _id } = req.user;
+
+    const accessToken = await getAppOnlyToken();
+
+    // 🔹 Get saved deltaLink
+    const user = await User.findById(_id).select("deltaLink");
+
+    let url: string | null =
+      user?.deltaLink ||
+      `https://graph.microsoft.com/v1.0/users/${email}/messages/delta`;
+
+    let totalSynced = 0;
+    let bulkOps: any[] = [];
+
+    while (url) {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      const data = (await response.json()) as GraphResponse;
+
+      if (!response.ok) {
+        throw new Error(
+          (data as any)?.error?.message || "Graph API error"
+        );
+      }
+
+      const messages = data.value || [];
+
+      // 🔹 Process in chunks (parallel)
+      const chunkSize = 10;
+
+      for (let i = 0; i < messages.length; i += chunkSize) {
+        const chunk = messages.slice(i, i + chunkSize);
+
+        await Promise.all(
+          chunk.map(async (msg: GraphMessage) => {
+
+            // 🔥 Handle deleted emails
+            if (msg["@removed"]) {
+              bulkOps.push({
+                deleteOne: {
+                  filter: { graphId: msg.id },
+                },
+              });
+              return;
+            }
+
+            // 🔹 Process attachments
+            await processMessageAttachments(accessToken, email, msg);
+
+            bulkOps.push({
+              updateOne: {
+                filter: { graphId: msg.id },
+                update: {
+                  $set: {
+                    graphId: msg.id,
+                    sender: msg.sender?.emailAddress,
+                    from: msg.from?.emailAddress,
+                    toRecipients:
+                      msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                    ccRecipients:
+                      msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                    bccRecipients:
+                      msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                    subject: msg.subject,
+                    bodyPreview: msg.bodyPreview,
+                    receivedDateTime: msg.receivedDateTime,
+                    sentDateTime: msg.sentDateTime,
+                    hasAttachments: msg.hasAttachments,
+                    isRead: msg.isRead,
+                    isDraft: msg.isDraft,
+                    webLink: msg.webLink,
+                    conversationId: msg.conversationId,
+                    importance: msg.importance,
+                    attachments: msg.attachments,
+                    crmUser: _id,
+                    normalizedSubject: normalizeSubject(msg.subject || ""),
+                    "body.content": msg.body?.content,
+                    "body.contentType": msg.body?.contentType,
+                  },
+                },
+                upsert: true,
+              },
+            });
+          })
+        );
+      }
+
+      totalSynced += messages.length;
+
+      // 🔹 Batch write (performance)
+      if (bulkOps.length >= 500) {
+        await Email.bulkWrite(bulkOps);
+        bulkOps = [];
+      }
+
+      // 🔹 Pagination
+      url = data["@odata.nextLink"] || null;
+
+      // 🔹 Save deltaLink at end
+      if (!url && data["@odata.deltaLink"]) {
+        await User.findByIdAndUpdate(_id, {
+          deltaLink: data["@odata.deltaLink"],
+        });
+      }
+    }
+
+    // Final flush
+    if (bulkOps.length) {
+      await Email.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Delta sync completed",
+      totalSynced,
+    });
+
+  } catch (error: any) {
+    console.error("Delta Sync Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
 
 export const syncMailboxMessages = async (
   req: AuthRequest,

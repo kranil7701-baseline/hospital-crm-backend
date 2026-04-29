@@ -15,8 +15,10 @@ export interface IUser extends Document {
   role: UserRole;
   active: boolean;
   comparePassword(password: string): Promise<boolean>;
+  deltaLink?: string;
   createdAt: Date;
   updatedAt: Date;
+
 }
 
 const UserSchema = new Schema<IUser>(
@@ -42,6 +44,7 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: true,
     },
+    deltaLink: { type: String },
     role: {
       type: String,
       required: true,
