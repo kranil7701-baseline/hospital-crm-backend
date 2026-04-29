@@ -879,7 +879,7 @@ export const getReceivedEmailsFromDB = async (
 };
 
 
-
+/*
 export const syncMailboxMessagesByDate = async (
   req: AuthRequest,
   res: Response
@@ -1083,7 +1083,198 @@ export const syncMailboxMessagesByDate = async (
     });
   }
 };
+*/
 
+export const syncMailboxMessagesByDate = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.user?.email) {
+      res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+      return;
+    }
+
+    const { email, _id } = req.user;
+
+    const accessToken = await getAppOnlyToken();
+
+    // 🔥 LAST 6 MONTHS FILTER (IMPORTANT CHANGE)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    let filter = `&$filter=receivedDateTime ge ${sixMonthsAgo.toISOString()}`;
+
+    const select =
+      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
+
+    let url = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=50&$orderby=receivedDateTime desc&$select=${select}${filter}`;
+
+    let totalSynced = 0;
+    let bulkOps: any[] = [];
+
+    let newEmails: any[] = [];
+    let updatedEmails: any[] = [];
+
+    const ATTACHMENT_CONCURRENCY = 5;
+
+    while (url) {
+      const graphResponse = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      const data = await graphResponse.json();
+
+      if (!graphResponse.ok) {
+        throw new Error(data?.error?.message || "Graph API error");
+      }
+
+      const messages = data.value || [];
+      if (!messages.length) break;
+
+      totalSynced += messages.length;
+
+      const ids = messages.map((m: any) => m.id);
+
+      const existingDocs = await Email.find(
+        { graphId: { $in: ids } },
+        {
+          graphId: 1,
+          isRead: 1,
+          subject: 1,
+          importance: 1,
+          hasAttachments: 1,
+        }
+      ).lean();
+
+      const existingMap = new Map(
+        existingDocs.map((doc: any) => [doc.graphId, doc])
+      );
+
+      // 🔥 attachments concurrency (safe)
+      for (let i = 0; i < messages.length; i += ATTACHMENT_CONCURRENCY) {
+        const chunk = messages.slice(i, i + ATTACHMENT_CONCURRENCY);
+
+        await Promise.allSettled(
+          chunk.map((msg: any) =>
+            processMessageAttachments(accessToken, email, msg)
+          )
+        );
+      }
+
+      for (const msg of messages) {
+        const existing = existingMap.get(msg.id);
+
+        const emailData = {
+          graphId: msg.id,
+          subject: msg.subject,
+          from: msg.from?.emailAddress,
+          receivedDateTime: msg.receivedDateTime,
+          webLink: msg.webLink,
+        };
+
+        const isNew = !existing;
+
+        const isChanged =
+          existing &&
+          (
+            existing.isRead !== msg.isRead ||
+            (existing.subject || "").trim() !== (msg.subject || "").trim() ||
+            existing.importance !== msg.importance ||
+            existing.hasAttachments !== msg.hasAttachments
+          );
+
+        if (isNew) {
+          newEmails.push(emailData);
+
+          bulkOps.push({
+            updateOne: {
+              filter: { graphId: msg.id },
+              update: {
+                $set: {
+                  graphId: msg.id,
+                  sender: msg.sender?.emailAddress,
+                  from: msg.from?.emailAddress,
+                  toRecipients:
+                    msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                  ccRecipients:
+                    msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                  bccRecipients:
+                    msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                  subject: msg.subject,
+                  bodyPreview: msg.bodyPreview,
+                  receivedDateTime: msg.receivedDateTime,
+                  sentDateTime: msg.sentDateTime,
+                  hasAttachments: msg.hasAttachments,
+                  isRead: msg.isRead,
+                  isDraft: msg.isDraft,
+                  webLink: msg.webLink,
+                  conversationId: msg.conversationId,
+                  importance: msg.importance,
+                  attachments: msg.attachments,
+                  crmUser: _id,
+                  normalizedSubject: normalizeSubject(msg.subject),
+                  "body.content": msg.body?.content,
+                  "body.contentType": msg.body?.contentType,
+                },
+              },
+              upsert: true,
+            },
+          });
+        } else if (isChanged) {
+          updatedEmails.push(emailData);
+
+          bulkOps.push({
+            updateOne: {
+              filter: { graphId: msg.id },
+              update: {
+                $set: {
+                  isRead: msg.isRead,
+                  subject: msg.subject,
+                  importance: msg.importance,
+                  hasAttachments: msg.hasAttachments,
+                  bodyPreview: msg.bodyPreview,
+                },
+              },
+            },
+          });
+        }
+      }
+
+      if (bulkOps.length >= 100) {
+        await Email.bulkWrite(bulkOps);
+        bulkOps = [];
+      }
+
+      url = data["@odata.nextLink"] || null;
+    }
+
+    if (bulkOps.length) {
+      await Email.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Synced last 6 months emails for ${email}`,
+      totalSynced,
+      newCount: newEmails.length,
+      updatedCount: updatedEmails.length,
+      newEmails,
+      updatedEmails,
+    });
+
+  } catch (error: any) {
+    console.error("Sync Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
 
 
 // type GraphMessage = {
