@@ -879,6 +879,7 @@ export const getReceivedEmailsFromDB = async (
 };
 
 
+
 export const syncMailboxMessagesByDate = async (
   req: AuthRequest,
   res: Response
@@ -945,7 +946,7 @@ export const syncMailboxMessagesByDate = async (
         existingDocs.map((doc: any) => [doc.graphId, doc])
       );
 
-      // 🔹 Process attachments (parallel chunks)
+      // 🔹 Process attachments (parallel)
       const chunkSize = 10;
       for (let i = 0; i < messages.length; i += chunkSize) {
         const chunk = messages.slice(i, i + chunkSize);
@@ -970,18 +971,17 @@ export const syncMailboxMessagesByDate = async (
 
         const isNew = !existing;
 
+        // ✅ FIXED CHANGE DETECTION
         const isChanged =
           existing &&
           (
             existing.isRead !== msg.isRead ||
-            existing.subject !== msg.subject ||
-            existing.bodyPreview !== msg.bodyPreview ||
+            (existing.subject || "").trim() !== (msg.subject || "").trim() ||
             existing.importance !== msg.importance ||
-            existing.hasAttachments !== msg.hasAttachments ||
-            existing.receivedDateTime?.toISOString() !== msg.receivedDateTime
+            existing.hasAttachments !== msg.hasAttachments
           );
 
-        // 🆕 NEW
+        // 🆕 NEW EMAIL
         if (isNew) {
           newEmails.push(emailData);
 
@@ -1021,7 +1021,7 @@ export const syncMailboxMessagesByDate = async (
           });
         }
 
-        // 🔄 UPDATED ONLY IF CHANGED
+        // 🔄 UPDATED ONLY IF ACTUAL CHANGE
         else if (isChanged) {
           updatedEmails.push(emailData);
 
@@ -1060,7 +1060,7 @@ export const syncMailboxMessagesByDate = async (
           });
         }
 
-        // ❌ If unchanged → do nothing
+        // ❌ unchanged → skip
       }
 
       // 🔹 Batch write
@@ -1097,6 +1097,7 @@ export const syncMailboxMessagesByDate = async (
     });
   }
 };
+
 
 
 // type GraphMessage = {
