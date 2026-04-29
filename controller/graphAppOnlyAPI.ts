@@ -897,7 +897,7 @@ export const syncMailboxMessagesByDate = async (
 
     const accessToken = await getAppOnlyToken();
 
-    // 🔹 Get last synced email
+    // 🔹 Last synced email
     const lastEmail = await Email.findOne({ crmUser: _id })
       .sort({ receivedDateTime: -1 })
       .select("receivedDateTime")
@@ -911,7 +911,6 @@ export const syncMailboxMessagesByDate = async (
     const select =
       "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
 
-    // 🔥 Reduced API calls using $top
     let url = `https://graph.microsoft.com/v1.0/users/${email}/messages?$top=50&$orderby=receivedDateTime desc&$select=${select}${filter}`;
 
     let totalSynced = 0;
@@ -919,6 +918,8 @@ export const syncMailboxMessagesByDate = async (
 
     let newEmails: any[] = [];
     let updatedEmails: any[] = [];
+
+    const ATTACHMENT_CONCURRENCY = 5;
 
     while (url) {
       const graphResponse = await fetch(url, {
@@ -936,7 +937,7 @@ export const syncMailboxMessagesByDate = async (
 
       totalSynced += messages.length;
 
-      // 🔹 Fetch only required fields (faster)
+      // 🔹 Existing emails map
       const ids = messages.map((m: any) => m.id);
 
       const existingDocs = await Email.find(
@@ -954,10 +955,15 @@ export const syncMailboxMessagesByDate = async (
         existingDocs.map((doc: any) => [doc.graphId, doc])
       );
 
-      // 🔥 NON-BLOCKING attachment processing (huge speed boost)
-      for (const msg of messages) {
-        processMessageAttachments(accessToken, email, msg)
-          .catch(err => console.error("Attachment error:", err));
+      // 🔥 ATTACHMENT PROCESSING WITH 5 CONCURRENCY LIMIT
+      for (let i = 0; i < messages.length; i += ATTACHMENT_CONCURRENCY) {
+        const chunk = messages.slice(i, i + ATTACHMENT_CONCURRENCY);
+
+        await Promise.allSettled(
+          chunk.map((msg: any) =>
+            processMessageAttachments(accessToken, email, msg)
+          )
+        );
       }
 
       // 🔹 Process messages
@@ -983,7 +989,7 @@ export const syncMailboxMessagesByDate = async (
             existing.hasAttachments !== msg.hasAttachments
           );
 
-        // 🆕 NEW
+        // 🆕 NEW EMAIL
         if (isNew) {
           newEmails.push(emailData);
 
@@ -995,9 +1001,12 @@ export const syncMailboxMessagesByDate = async (
                   graphId: msg.id,
                   sender: msg.sender?.emailAddress,
                   from: msg.from?.emailAddress,
-                  toRecipients: msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                  ccRecipients: msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                  bccRecipients: msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                  toRecipients:
+                    msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                  ccRecipients:
+                    msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                  bccRecipients:
+                    msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
                   subject: msg.subject,
                   bodyPreview: msg.bodyPreview,
                   receivedDateTime: msg.receivedDateTime,
@@ -1020,7 +1029,7 @@ export const syncMailboxMessagesByDate = async (
           });
         }
 
-        // 🔄 UPDATED
+        // 🔄 UPDATED ONLY IF CHANGED
         else if (isChanged) {
           updatedEmails.push(emailData);
 
@@ -1041,7 +1050,7 @@ export const syncMailboxMessagesByDate = async (
         }
       }
 
-      // 🔥 Faster batch writes
+      // 🔥 Faster DB writes
       if (bulkOps.length >= 100) {
         await Email.bulkWrite(bulkOps);
         bulkOps = [];
@@ -1050,7 +1059,7 @@ export const syncMailboxMessagesByDate = async (
       url = data["@odata.nextLink"] || null;
     }
 
-    // 🔹 Final flush
+    // Final flush
     if (bulkOps.length) {
       await Email.bulkWrite(bulkOps);
     }
