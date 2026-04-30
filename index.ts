@@ -24,6 +24,7 @@ import activityRoutes from "./routes/activity.ts";
 import documentRoutes from "./routes/document.ts";
 // import graphCertRoutes from "./routes/graphCertificate";
 import graphAppOnlyRoutes from "./routes/graphAppOnly.ts";
+import pushNotificationRoutes from "./routes/pushNotification.ts";
 
 // Load env
 dotenv.config();
@@ -128,6 +129,7 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/document", documentRoutes);
 // app.use("/api/graph-cert", graphCertRoutes);
 app.use("/api/graph-app", graphAppOnlyRoutes);
+app.use("/api/push", pushNotificationRoutes);
 
 
 if (process.env.NODE_ENV !== "production") {

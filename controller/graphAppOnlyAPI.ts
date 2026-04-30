@@ -513,7 +513,7 @@ export const sendMailFromMailbox = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { toEmail, subject, content, ccEmails } = req.body;
+    const { toEmail, subject, content, ccEmails, bccEmails } = req.body;
     const fromEmail = req.user?.email;
 
     if (!fromEmail || !toEmail || !subject || !content) {
@@ -535,6 +535,18 @@ export const sendMailFromMailbox = async (
         ? ccEmails
         : ccEmails.split(",").map((e: string) => e.trim());
       ccRecipients = ccList
+        .filter((e: string) => e)
+        .map((email: string) => ({
+          emailAddress: { address: email },
+        }));
+    }
+
+    let bccRecipients: any[] = [];
+    if (bccEmails) {
+      const bccList = Array.isArray(bccEmails)
+        ? bccEmails
+        : bccEmails.split(",").map((e: string) => e.trim());
+      bccRecipients = bccList
         .filter((e: string) => e)
         .map((email: string) => ({
           emailAddress: { address: email },
@@ -612,6 +624,7 @@ export const sendMailFromMailbox = async (
           },
         ],
         ccRecipients: ccRecipients,
+        bccRecipients: bccRecipients,
         attachments: attachments,
       },
       saveToSentItems: "true",
@@ -1103,10 +1116,10 @@ export const syncMailboxMessagesByDate = async (
     const accessToken = await getAppOnlyToken();
 
     // 🔥 LAST 6 MONTHS FILTER (IMPORTANT CHANGE)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const tenDaysAgo = new Date();
+    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
 
-    let filter = `&$filter=receivedDateTime ge ${sixMonthsAgo.toISOString()}`;
+    let filter = `&$filter=receivedDateTime ge ${tenDaysAgo.toISOString()}`;
 
     const select =
       "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
