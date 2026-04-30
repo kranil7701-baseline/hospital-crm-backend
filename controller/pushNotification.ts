@@ -6,11 +6,15 @@ import PushSubscription from '../model/PushSubscription.ts';
 const publicVapidKey = process.env.VAPID_PUBLIC_KEY || 'abcd';
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY || 'abcd';
 
-webPush.setVapidDetails(
-  'mailto:kmason@rfhealth.com',
-  publicVapidKey,
-  privateVapidKey
-);
+try {
+  webPush.setVapidDetails(
+    'mailto:kmason@rfhealth.com',
+    publicVapidKey,
+    privateVapidKey
+  );
+} catch (error) {
+  console.warn('⚠️ Push notifications disabled: Invalid VAPID keys provided.');
+}
 
 export const subscribe = async (req: Request, res: Response) => {
   try {
