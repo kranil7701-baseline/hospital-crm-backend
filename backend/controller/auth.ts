@@ -98,6 +98,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         maxAge: 10 * 60 * 60 * 1000 // 10 hours
       });
 
+      /*
       if (user.email) {
         try {
           await sendPushToAll({
@@ -109,6 +110,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
           console.error('Error sending push notification on login', err);
         }
       }
+        */
 
       res.status(200).json({
         success: true,
