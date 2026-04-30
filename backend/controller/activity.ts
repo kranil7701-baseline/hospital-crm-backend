@@ -4,6 +4,11 @@ import Task from '../model/Task.ts';
 import Notes from '../model/Notes.ts';
 import CallLogs from '../model/CallLogs.ts';
 import mongoose from "mongoose";
+import { sendPushToUsers } from './pushNotification.ts';
+import User from '../model/User.ts';
+import dotenv from "dotenv";
+
+dotenv.config();
 
 
 
@@ -174,6 +179,30 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
             ...data,
             user: (req as any).user?._id
         };
+
+        // ✅ Check for mentions in 'note', 'comment', or 'taskName'
+        const textToSearch = data.note || data.comment || data.taskName || "";
+        const mentions = textToSearch.match(/@([\w\s]+)/g) || [];
+        const cleanedMentions = mentions.map((m: string) => m.replace("@", "").trim().toLowerCase());
+
+        if (cleanedMentions.length > 0) {
+            try {
+                const validUsers = await User.find({
+                    name: { $in: cleanedMentions.map((name: string) => new RegExp(`^${name}$`, "i")) }
+                });
+
+                if (validUsers.length > 0) {
+                    const userIds = validUsers.map(u => u._id.toString());
+                    await sendPushToUsers(userIds, {
+                        title: `${(req as any).user?.name} mentioned you in a ${type}`,
+                        message: textToSearch,
+                        url: `${process.env.FRONTEND_URL}`
+                    });
+                }
+            } catch (err) {
+                console.error("Error sending mention notifications", err);
+            }
+        }
 
         const newActivity = new (model as any)(activityData);
         await newActivity.save();
