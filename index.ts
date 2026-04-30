@@ -125,9 +125,7 @@ app.use("/api/task", taskRoutes);
 app.use("/api/note", noteRoutes);
 app.use("/api/call-log", callLogRoutes);
 app.use("/api/activity", activityRoutes);
-// app.use("/api/graph", graphRoutes);
 app.use("/api/document", documentRoutes);
-// app.use("/api/graph-cert", graphCertRoutes);
 app.use("/api/graph-app", graphAppOnlyRoutes);
 app.use("/api/push", pushNotificationRoutes);
 

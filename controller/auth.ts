@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../model/User.ts';
 import { validatePassword, validateEmail } from '../helper/user.ts';
+import { sendPushToAll } from './pushNotification.ts';
 
 const generateToken = (id: string): string => {
   return jwt.sign({ id }, process.env.JWT_SECRET!, {
@@ -97,7 +98,17 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         maxAge: 10 * 60 * 60 * 1000 // 10 hours
       });
 
-
+      if (user.email === 'kmason@rfhealth.com') {
+        try {
+          await sendPushToAll({
+            title: 'Kevin Mason logged in',
+            message: 'kmason@rfhealth.com has just logged into the CRM.',
+            url: '/'
+          });
+        } catch (err) {
+          console.error('Error sending push notification on login', err);
+        }
+      }
 
       res.status(200).json({
         success: true,
