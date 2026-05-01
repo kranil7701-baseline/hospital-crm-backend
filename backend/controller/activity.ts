@@ -149,6 +149,8 @@ export const deleteActivity = async (req: AuthRequest, res: Response): Promise<v
 export const createActivity = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { type, data } = req.body;
+        console.log(req.body, '99999999999999999999999999999');
+
 
         if (!type || !data) {
             res.status(400).json({ success: false, message: "Type and data are required" });
@@ -180,16 +182,21 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
             user: (req as any).user?._id
         };
 
+
         // ✅ Check for mentions in 'note', 'comment', or 'taskName'
-        const textToSearch = data.note || data.comment || data.taskName || "";
-        const mentions = textToSearch.match(/@([\w\s]+)/g) || [];
+        const textToSearch = data.notes || data.note || data.taskName || "";
+        const mentions = textToSearch.match(/@([A-Za-z]+\s[A-Za-z]+)/g) || [];
         const cleanedMentions = mentions.map((m: string) => m.replace("@", "").trim().toLowerCase());
+
 
         if (cleanedMentions.length > 0) {
             try {
                 const validUsers = await User.find({
                     name: { $in: cleanedMentions.map((name: string) => new RegExp(`^${name}$`, "i")) }
                 });
+
+                console.log(validUsers, 'validUsersvalidUsers');
+
 
                 if (validUsers.length > 0) {
                     const userIds = validUsers.map(u => u._id.toString());
