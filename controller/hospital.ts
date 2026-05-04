@@ -5,6 +5,7 @@ import GPO from '../model/Gpo.ts';
 import IDN from '../model/Idn.ts';
 import mongoose from "mongoose";
 import Deal from '../model/deal.ts';
+import Contact from '../model/Contact.ts';
 
 export const getHospitals = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -63,6 +64,7 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+/*
 export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -113,6 +115,65 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
     });
   }
 };
+*/
+
+
+export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (typeof id !== "string") {
+      res.status(400).json({ success: false, message: "Invalid ID" });
+      return;
+    }
+
+    // 1. Get hospital
+    const hospital = await Hospital.findById(id)
+      .populate("idn", "name")
+      .populate("gpo", "name");
+
+    if (!hospital) {
+      res.status(404).json({
+        success: false,
+        message: "Hospital not found",
+      });
+      return;
+    }
+
+    // 2. Get contacts linked to hospital ✅
+    const contacts = await Contact.find({ hospital: id }).select(
+      "firstName lastName phoneNumber designation email isPrimary"
+    );
+
+    // 3. Get deals
+    const deals = await Deal.find({ hospital: id })
+      .select("products")
+      .populate({
+        path: "products.product",
+        select: "name",
+      });
+
+    // 4. Final response
+    const responseData = {
+      ...hospital.toObject(),
+      contacts, // ✅ manually attached
+      deals,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseData,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching hospital",
+      error: error.message,
+    });
+  }
+};
+
+
 
 
 export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
