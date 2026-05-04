@@ -1704,6 +1704,9 @@ export const syncHospitalEmails = async (
     const contacts = await Contact.find({ hospital: hospitalId }).select("email");
     const contactEmails = contacts.map((c) => c.email).filter((e) => e);
 
+    console.log("contactEmails", contactEmails);
+
+
     if (contactEmails.length === 0) {
       res.status(200).json({
         success: true,

@@ -20,7 +20,8 @@ router.get("/messages/:email", protect, getMailboxMessages); // get email messag
 router.get("/sent-emails", protect, getSentEmailsFromDB); // Get Sent Emails from DB
 router.get("/received-emails", protect, getReceivedEmailsFromDB); // Get Received Emails from DB
 
-router.post("/sync", protect, syncHospitalEmails); // Sync Emails
+router.post("/sync", protect, syncHospitalEmails); // Sync Emails by Date
+router.post("/sync-hospital", protect, syncHospitalEmails); // Sync Hospital Emails
 router.post("/send", protect, sendMailFromMailbox); // Send Emails
 router.post("/reply", protect, replyToMessage); // Reply to Emails
 
