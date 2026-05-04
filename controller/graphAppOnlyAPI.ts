@@ -3,6 +3,8 @@ import * as msal from "@azure/msal-node";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Email from "../model/email.ts";
 import User from "../model/User.ts";
+import Hospital from "../model/Hospital.ts";
+import Contact from "../model/Contact.ts";
 
 const getMsalConfig = () => {
   let privateKey = process.env.MS_GRAPH_PRIVATE_KEY;
@@ -1677,6 +1679,148 @@ export const replyToMessage = async (
       success: false,
       message: "Internal Server Error",
       error: error.message,
+    });
+  }
+};
+
+export const syncHospitalEmails = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { hospitalId } = req.body;
+    const crmUserId = req.user?._id;
+    const userEmail = req.user?.email;
+
+    if (!hospitalId || !crmUserId || !userEmail) {
+      res.status(400).json({
+        success: false,
+        message: "hospitalId, user authentication, and email are required",
+      });
+      return;
+    }
+
+    // 1. Find Contacts for this Hospital
+    const contacts = await Contact.find({ hospital: hospitalId }).select("email");
+    const contactEmails = contacts.map((c) => c.email).filter((e) => e);
+
+    if (contactEmails.length === 0) {
+      res.status(200).json({
+        success: true,
+        message: "No contacts found for this hospital",
+        totalSynced: 0,
+      });
+      return;
+    }
+
+    // 2. Get Application Token
+    const accessToken = await getAppOnlyToken();
+
+    // 3. Build Graph API Search Query
+    // Microsoft Graph $search can handle multiple terms with OR
+    const searchQuery = contactEmails.map((email) => `"${email}"`).join(" OR ");
+
+    // 4. Fetch messages from Graph API
+    const select =
+      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
+
+    let url = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$search=${encodeURIComponent(
+      searchQuery,
+    )}&$top=50&$select=${select}`;
+
+    let totalSynced = 0;
+    let bulkOps: any[] = [];
+    const ATTACHMENT_CONCURRENCY = 5;
+
+    while (url) {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ConsistencyLevel: "eventual", // Required for $search
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error?.message || "Graph API error");
+      }
+
+      const messages = data.value || [];
+      if (messages.length === 0) break;
+
+      totalSynced += messages.length;
+
+      // 🔥 Process attachments in chunks
+      for (let i = 0; i < messages.length; i += ATTACHMENT_CONCURRENCY) {
+        const chunk = messages.slice(i, i + ATTACHMENT_CONCURRENCY);
+        await Promise.allSettled(
+          chunk.map((msg: any) =>
+            processMessageAttachments(accessToken, userEmail, msg),
+          ),
+        );
+      }
+
+      // 🔹 Prepare Bulk Operations
+      for (const msg of messages) {
+        bulkOps.push({
+          updateOne: {
+            filter: { graphId: msg.id, crmUser: crmUserId },
+            update: {
+              $set: {
+                graphId: msg.id,
+                sender: msg.sender?.emailAddress,
+                from: msg.from?.emailAddress,
+                toRecipients:
+                  msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                ccRecipients:
+                  msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                bccRecipients:
+                  msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+                subject: msg.subject,
+                bodyPreview: msg.bodyPreview,
+                receivedDateTime: msg.receivedDateTime,
+                sentDateTime: msg.sentDateTime,
+                hasAttachments: msg.hasAttachments,
+                isRead: msg.isRead,
+                isDraft: msg.isDraft,
+                webLink: msg.webLink,
+                conversationId: msg.conversationId,
+                importance: msg.importance,
+                attachments: msg.attachments,
+                crmUser: crmUserId,
+                normalizedSubject: normalizeSubject(msg.subject || ""),
+                "body.content": msg.body?.content,
+                "body.contentType": msg.body?.contentType,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+
+      if (bulkOps.length >= 100) {
+        await Email.bulkWrite(bulkOps);
+        bulkOps = [];
+      }
+
+      url = data["@odata.nextLink"] || null;
+    }
+
+    if (bulkOps.length > 0) {
+      await Email.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Synced ${totalSynced} emails related to hospital contacts`,
+      totalSynced,
+    });
+  } catch (error: any) {
+    console.error("Sync Hospital Emails Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
     });
   }
 };
