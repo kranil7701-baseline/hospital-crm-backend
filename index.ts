@@ -1,6 +1,8 @@
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+dotenv.config();
+
 import morgan from "morgan";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -25,11 +27,10 @@ import documentRoutes from "./routes/document.ts";
 // import graphCertRoutes from "./routes/graphCertificate";
 import graphAppOnlyRoutes from "./routes/graphAppOnly.ts";
 import pushNotificationRoutes from "./routes/pushNotification.ts";
-
-// Load env
-dotenv.config();
+import { setupPush } from "./controller/pushNotification.ts";
 
 const app = express();
+setupPush();
 const PORT = Number(process.env.PORT) || 8000;
 
 // ================= CORS =================

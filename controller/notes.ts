@@ -2,6 +2,10 @@ import type { Request, Response } from 'express';
 import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Notes from '../model/Notes.ts';
 import mongoose from "mongoose";
+import { sendPushToUsers } from './pushNotification.ts';
+import User from '../model/User.ts';
+import dotenv from "dotenv";
+dotenv.config();
 
 export const getNotes = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -104,6 +108,42 @@ export const getNoteById = async (req: Request, res: Response): Promise<void> =>
 
 export const createNote = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const noteText = req.body.note || "";
+
+    const mentions = noteText.match(/@([\w\s]+)/g) || [];
+
+    const cleanedMentions = mentions.map((m: string) =>
+      m.replace("@", "").trim().toLowerCase()
+    );
+
+    console.log("Tagged users:", cleanedMentions);
+
+    if (cleanedMentions.length > 0) {
+      try {
+        const validUsers = await User.find({
+          name: {
+            $in: cleanedMentions.map(
+              (name: string) => new RegExp(`^${name}$`, "i")
+            )
+          }
+        });
+
+        if (validUsers.length > 0) {
+          const userIds = validUsers.map(u => u._id.toString());
+
+          // ✅ NOW this is correct
+          await sendPushToUsers(userIds, {
+            title: `${req.user?.name} mentioned you in a note`,
+            message: noteText,
+            url: `${process.env.FRONTEND_URL}`
+          });
+        }
+
+      } catch (err) {
+        console.error("Error sending mention notifications", err);
+      }
+    }
+
     const noteData = {
       ...req.body,
       user: req.user?._id
@@ -111,11 +151,16 @@ export const createNote = async (req: AuthRequest, res: Response): Promise<void>
 
     const newNote = new Notes(noteData);
     await newNote.save();
-    await newNote.populate('hospital', 'hospitalName');
+    await newNote.populate("hospital", "hospitalName");
 
     res.status(201).json({ success: true, data: newNote });
+
   } catch (error: any) {
-    res.status(400).json({ success: false, message: 'Failed to create note', error: error.message });
+    res.status(400).json({
+      success: false,
+      message: "Failed to create note",
+      error: error.message
+    });
   }
 };
 

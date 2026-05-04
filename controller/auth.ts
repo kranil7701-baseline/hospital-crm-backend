@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../model/User.ts';
 import { validatePassword, validateEmail } from '../helper/user.ts';
-import { sendPushToAll } from './pushNotification.ts';
+
 
 const generateToken = (id: string): string => {
   return jwt.sign({ id }, process.env.JWT_SECRET!, {
@@ -98,17 +98,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         maxAge: 10 * 60 * 60 * 1000 // 10 hours
       });
 
-      if (user.email === 'kmason@rfhealth.com') {
-        try {
-          await sendPushToAll({
-            title: 'Kevin Mason logged in',
-            message: 'kmason@rfhealth.com has just logged into the CRM.',
-            url: '/'
-          });
-        } catch (err) {
-          console.error('Error sending push notification on login', err);
-        }
-      }
+
 
       res.status(200).json({
         success: true,
@@ -160,15 +150,22 @@ export const getMe = async (req: any, res: Response): Promise<void> => {
 };
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
-  res.cookie('token', 'none', {
-    expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-  });
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
 
-  res.status(200).json({
-    success: true,
-    data: {},
-  });
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Logout failed",
+      error: error.message,
+    });
+  }
 };
