@@ -257,7 +257,16 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
   try {
     const searchQuery = (req.query.search as string) || "";
     const userId = req.query.userId as string;
-    const productId = req.query.productId as string;
+    const productIdsRaw = req.query.productIds as string | string[];
+    const gpoId = req.query.gpoId as string;
+
+    let productIds: mongoose.Types.ObjectId[] = [];
+    if (productIdsRaw) {
+      const idsArray = Array.isArray(productIdsRaw) ? productIdsRaw : (productIdsRaw as string).split(',');
+      productIds = idsArray
+        .filter(id => mongoose.Types.ObjectId.isValid(id.trim()))
+        .map(id => new mongoose.Types.ObjectId(id.trim()));
+    }
 
     const matchStage: any = {};
 
@@ -266,6 +275,13 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
     // =========================
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       matchStage.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    // =========================
+    // 🔥 GPO FILTER
+    // =========================
+    if (gpoId && mongoose.Types.ObjectId.isValid(gpoId)) {
+      matchStage.gpo = new mongoose.Types.ObjectId(gpoId);
     }
 
     // =========================
@@ -290,11 +306,11 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
             // =========================
             // 🔥 PRODUCT FILTER (NEW)
             // =========================
-            ...(productId && mongoose.Types.ObjectId.isValid(productId)
+            ...(productIds.length > 0
               ? [
                 {
                   $match: {
-                    "products.product": new mongoose.Types.ObjectId(productId)
+                    "products.product": { $in: productIds }
                   }
                 }
               ]
@@ -430,11 +446,11 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
           closedBusiness: [
             { $unwind: "$products" },
 
-            ...(productId && mongoose.Types.ObjectId.isValid(productId)
+            ...(productIds.length > 0
               ? [
                 {
                   $match: {
-                    "products.product": new mongoose.Types.ObjectId(productId)
+                    "products.product": { $in: productIds }
                   }
                 }
               ]
@@ -458,9 +474,6 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
     const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
     const closedBusiness = result[0]?.closedBusiness[0]?.count || 0;
 
-
-
-    /*
     const productRevenue = await Product.aggregate([
       {
         $lookup: {
@@ -478,60 +491,12 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
               ]
               : []),
 
-            { $unwind: "$products" },
-
-            // 🔥 PRODUCT MATCH (correct place)
-            {
-              $match: {
-                $expr: {
-                  $eq: ["$products.product", "$$productId"]
-                }
-              }
-            }
-          ],
-          as: "dealData"
-        }
-      },
-
-      // =========================
-      // 🔥 CORRECT ARR SUM
-      // =========================
-      {
-        $addFields: {
-          ARR: {
-            $sum: "$dealData.products.dealAmount"
-          }
-        }
-      },
-
-      {
-        $project: {
-          _id: 0,
-          productId: "$_id",
-          productName: "$name",
-          ARR: 1
-        }
-      },
-
-      { $sort: { ARR: -1 } }
-    ]);
-*/
-
-    // =========================
-    // 🔥 PRODUCT REVENUE (FIXED)
-    // =========================
-    const productRevenue = await Product.aggregate([
-      {
-        $lookup: {
-          from: "deals",
-          let: { productId: "$_id" },
-          pipeline: [
-            // 🔥 USER FILTER (important)
-            ...(userId && mongoose.Types.ObjectId.isValid(userId)
+            // 🔥 GPO FILTER
+            ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
                 {
                   $match: {
-                    user: new mongoose.Types.ObjectId(userId)
+                    gpo: new mongoose.Types.ObjectId(gpoId)
                   }
                 }
               ]
@@ -559,12 +524,12 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
         $addFields: {
           ARR: {
             $cond: [
-              // if productId is passed → only that product gets real revenue
-              productId && mongoose.Types.ObjectId.isValid(productId)
+              // if productIds are passed → only those products get real revenue
+              productIds.length > 0
                 ? {
-                  $eq: [
+                  $in: [
                     "$_id",
-                    new mongoose.Types.ObjectId(productId)
+                    productIds
                   ]
                 }
                 : true,
@@ -592,9 +557,6 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 
       { $sort: { ARR: -1 } }
     ]);
-
-
-
 
     res.status(200).json({
       success: true,
