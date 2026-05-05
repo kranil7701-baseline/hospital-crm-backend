@@ -761,9 +761,49 @@ export const getSentEmailsFromDB = async (
     ]);
     const totalEmails = countResult.length > 0 ? countResult[0].total : 0;
 
+    // Convert CIDs to links dynamically
+    const processedEmails = emails.map((email: any) => {
+      let content = email.body?.content || "";
+      if (email.attachments && email.attachments.length > 0) {
+        email.attachments.forEach((att: any) => {
+          if (att.contentId && att.fileUrl) {
+            const cleanCid = att.contentId.replace(/[<>]/g, "");
+            const escapedCid = cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const replaceRegex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
+            content = content.replace(replaceRegex, att.fileUrl);
+          }
+        });
+
+        // Fallback for fuzzy matches on attachment names if CIDs remain
+        const remainingCids = content.match(/cid:[^"'\s>)]+/gi);
+        if (remainingCids) {
+          remainingCids.forEach((match: string) => {
+            const cidPart = match.replace(/cid:<?/i, "").replace(/>?$/i, "");
+            const cleanCid = cidPart.replace(/[<>]/g, "").toLowerCase();
+            const fuzzyAtt = email.attachments.find(
+              (a: any) => a.name && a.name.toLowerCase() === cleanCid,
+            );
+            if (fuzzyAtt && fuzzyAtt.fileUrl) {
+              const escapedCid = cidPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const replaceRegex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
+              content = content.replace(replaceRegex, fuzzyAtt.fileUrl);
+            }
+          });
+        }
+      }
+
+      return {
+        ...email,
+        body: {
+          ...email.body,
+          content,
+        },
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: emails,
+      data: processedEmails,
       pagination: {
         total: totalEmails,
         page: Number(page),
@@ -780,6 +820,7 @@ export const getSentEmailsFromDB = async (
     });
   }
 };
+
 
 export const getReceivedEmailsFromDB = async (
   req: AuthRequest,
@@ -873,9 +914,49 @@ export const getReceivedEmailsFromDB = async (
     ]);
     const totalEmails = countResult.length > 0 ? countResult[0].total : 0;
 
+    // Convert CIDs to links dynamically
+    const processedEmails = emails.map((email: any) => {
+      let content = email.body?.content || "";
+      if (email.attachments && email.attachments.length > 0) {
+        email.attachments.forEach((att: any) => {
+          if (att.contentId && att.fileUrl) {
+            const cleanCid = att.contentId.replace(/[<>]/g, "");
+            const escapedCid = cleanCid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const replaceRegex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
+            content = content.replace(replaceRegex, att.fileUrl);
+          }
+        });
+
+        // Fallback for fuzzy matches on attachment names if CIDs remain
+        const remainingCids = content.match(/cid:[^"'\s>)]+/gi);
+        if (remainingCids) {
+          remainingCids.forEach((match: string) => {
+            const cidPart = match.replace(/cid:<?/i, "").replace(/>?$/i, "");
+            const cleanCid = cidPart.replace(/[<>]/g, "").toLowerCase();
+            const fuzzyAtt = email.attachments.find(
+              (a: any) => a.name && a.name.toLowerCase() === cleanCid,
+            );
+            if (fuzzyAtt && fuzzyAtt.fileUrl) {
+              const escapedCid = cidPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const replaceRegex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
+              content = content.replace(replaceRegex, fuzzyAtt.fileUrl);
+            }
+          });
+        }
+      }
+
+      return {
+        ...email,
+        body: {
+          ...email.body,
+          content,
+        },
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: emails,
+      data: processedEmails,
       pagination: {
         total: totalEmails,
         page: Number(page),
@@ -892,7 +973,6 @@ export const getReceivedEmailsFromDB = async (
     });
   }
 };
-
 
 /*
 export const syncMailboxMessagesByDate = async (
