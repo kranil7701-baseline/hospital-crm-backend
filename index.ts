@@ -53,6 +53,8 @@ app.use(
   })
 );
 
+app.options('*', cors());
+
 // ================= MIDDLEWARE =================
 app.use(cookieParser());
 app.use(morgan("dev"));

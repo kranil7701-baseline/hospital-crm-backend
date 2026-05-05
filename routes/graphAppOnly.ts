@@ -10,7 +10,7 @@ import {
   syncMailboxMessagesByDate,
   syncHospitalEmails
 
-} from "../controller/graphAppOnlyAPI.ts";
+} from "../controller/graphAppOnlyAPI00.ts";
 import { protect } from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
