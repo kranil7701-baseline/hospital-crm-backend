@@ -125,7 +125,7 @@ const processMessageAttachments = async (
           const backendBaseUrl =
             process.env.BACKEND_URL ||
             (process.env.NODE_ENV === "production"
-              ? "https://hospital-crm-backend-prp5.onrender.com"
+              ? `${process.env.BACKEND_URL}`
               : "http://localhost:8000");
 
           const fileUrl = `${backendBaseUrl}/api/graph-app/attachment/${userId}/${message.id}/${attachment.id}`;
