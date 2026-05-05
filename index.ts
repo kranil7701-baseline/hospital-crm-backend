@@ -1,3 +1,7 @@
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -50,10 +54,8 @@ app.use(
       }
     },
     credentials: true,
-  })
+  }),
 );
-
-
 
 // ================= MIDDLEWARE =================
 app.use(cookieParser());
@@ -131,7 +133,6 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/document", documentRoutes);
 app.use("/api/graph-app", graphAppOnlyRoutes);
 app.use("/api/push", pushNotificationRoutes);
-
 
 if (process.env.NODE_ENV !== "production") {
   const startServer = async () => {
