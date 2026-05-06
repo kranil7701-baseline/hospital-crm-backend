@@ -1,10 +1,13 @@
-import type { Request, Response } from 'express';
-import User from '../model/User.ts';
-import { validatePassword, validateEmail } from '../helper/user.ts';
-import type { AuthRequest } from '../middleware/authMiddleware.ts';
+import type { Request, Response } from "express";
+import User from "../model/User.ts";
+import { validatePassword, validateEmail } from "../helper/user.ts";
+import type { AuthRequest } from "../middleware/authMiddleware.ts";
+import PushSubscription from "../model/PushSubscription.ts";
 
-
-export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getUsers = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     // Query params
     const page = parseInt(req.query.page as string) || 1;
@@ -15,11 +18,11 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
 
     const searchQuery = search
       ? {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } }
-        ]
-      }
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { email: { $regex: search, $options: "i" } },
+          ],
+        }
       : {};
 
     // Fetch users
@@ -36,20 +39,21 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
       limit,
       totalUsers: total,
       totalPages: Math.ceil(total / limit),
-      data: users
+      data: users,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve users",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-
-export const getUsersAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getUsersAdmin = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     // Query params
     const page = parseInt(req.query.page as string) || 1;
@@ -60,11 +64,11 @@ export const getUsersAdmin = async (req: AuthRequest, res: Response): Promise<vo
 
     const searchQuery: any = search
       ? {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } }
-        ]
-      }
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { email: { $regex: search, $options: "i" } },
+          ],
+        }
       : {};
 
     // Exclude the current user
@@ -86,20 +90,21 @@ export const getUsersAdmin = async (req: AuthRequest, res: Response): Promise<vo
       limit,
       totalUsers: total,
       totalPages: Math.ceil(total / limit),
-      data: users
+      data: users,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve users",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-
-export const getUserById = async (req: Request, res: Response): Promise<void> => {
+export const getUserById = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const user = await User.findById(id);
@@ -107,25 +112,28 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
       return;
     }
 
     res.status(200).json({
       success: true,
-      data: user
+      data: user,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Error fetching user',
-      error: error.message
+      message: "Error fetching user",
+      error: error.message,
     });
   }
 };
 
-export const createUser = async (req: Request, res: Response): Promise<void> => {
+export const createUser = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { email, password } = req.body;
 
@@ -137,7 +145,7 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
 
     const userExists = await User.findOne({ email });
     if (userExists) {
-      res.status(400).json({ success: false, message: 'User already exists' });
+      res.status(400).json({ success: false, message: "User already exists" });
       return;
     }
 
@@ -147,24 +155,26 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-
     const user = new User(req.body);
     await user.save();
 
     res.status(201).json({
       success: true,
-      data: user
+      data: user,
     });
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to create user',
-      error: error.message
+      message: "Failed to create user",
+      error: error.message,
     });
   }
 };
 
-export const updateUser = async (req: Request, res: Response): Promise<void> => {
+export const updateUser = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const { email, password } = req.body;
@@ -173,7 +183,9 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
     if (email) {
       const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
       if (!emailRegex.test(email)) {
-        res.status(400).json({ success: false, message: 'Please enter a valid email' });
+        res
+          .status(400)
+          .json({ success: false, message: "Please enter a valid email" });
         return;
       }
     }
@@ -181,39 +193,55 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
     // Validate Password if provided
     if (password) {
       if (password.length < 8) {
-        res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
+        res.status(400).json({
+          success: false,
+          message: "Password must be at least 8 characters long",
+        });
         return;
       }
       if (!/[a-z]/.test(password)) {
-        res.status(400).json({ success: false, message: 'Password must include at least one lowercase letter' });
+        res.status(400).json({
+          success: false,
+          message: "Password must include at least one lowercase letter",
+        });
         return;
       }
       if (!/[A-Z]/.test(password)) {
-        res.status(400).json({ success: false, message: 'Password must include at least one uppercase letter' });
+        res.status(400).json({
+          success: false,
+          message: "Password must include at least one uppercase letter",
+        });
         return;
       }
       if (!/\d/.test(password)) {
-        res.status(400).json({ success: false, message: 'Password must include at least one number' });
+        res.status(400).json({
+          success: false,
+          message: "Password must include at least one number",
+        });
         return;
       }
       if (!/[@$!%*?&#]/.test(password)) {
-        res.status(400).json({ success: false, message: 'Password must include at least one special character (@$!%*?&#)' });
+        res.status(400).json({
+          success: false,
+          message:
+            "Password must include at least one special character (@$!%*?&#)",
+        });
         return;
       }
     }
 
-    const user = await User.findById(id).select('+password');
+    const user = await User.findById(id).select("+password");
 
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
       return;
     }
 
     // Explicitly update fields from req.body
-    Object.keys(req.body).forEach(key => {
+    Object.keys(req.body).forEach((key) => {
       (user as any)[key] = req.body[key];
     });
 
@@ -221,18 +249,21 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 
     res.status(200).json({
       success: true,
-      data: user
+      data: user,
     });
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to update user',
-      error: error.message
+      message: "Failed to update user",
+      error: error.message,
     });
   }
 };
 
-export const deleteUser = async (req: Request, res: Response): Promise<void> => {
+export const deleteUser = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const user = await User.findByIdAndDelete(id);
@@ -240,33 +271,36 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
       return;
     }
 
     res.status(200).json({
       success: true,
-      message: 'User deleted successfully'
+      message: "User deleted successfully",
     });
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to delete user',
-      error: error.message
+      message: "Failed to delete user",
+      error: error.message,
     });
   }
 };
 
-export const updateUserStatus = async (req: Request, res: Response): Promise<void> => {
+export const updateUserStatus = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const id = req.query.id as string;
-    const active = req.query.active === 'true';
+    const active = req.query.active === "true";
 
     if (!id) {
       res.status(400).json({
         success: false,
-        message: 'User ID is required in query'
+        message: "User ID is required in query",
       });
       return;
     }
@@ -274,27 +308,27 @@ export const updateUserStatus = async (req: Request, res: Response): Promise<voi
     const user = await User.findByIdAndUpdate(
       id,
       { active },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
       return;
     }
 
     res.status(200).json({
       success: true,
-      message: `User ${active ? 'activated' : 'deactivated'} successfully`,
-      data: user
+      message: `User ${active ? "activated" : "deactivated"} successfully`,
+      data: user,
     });
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to update user status',
-      error: error.message
+      message: "Failed to update user status",
+      error: error.message,
     });
   }
 };
