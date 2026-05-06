@@ -1,9 +1,9 @@
-import type { Request, Response } from 'express';
-import type { AuthRequest } from '../middleware/authMiddleware.ts';
-import Notes from '../model/Notes.ts';
+import type { Request, Response } from "express";
+import type { AuthRequest } from "../middleware/authMiddleware.ts";
+import Notes from "../model/Notes.ts";
 import mongoose from "mongoose";
-import { sendPushToUsers } from './pushNotification.ts';
-import User from '../model/User.ts';
+import { sendPushToUsers } from "./pushNotification.ts";
+import User from "../model/User.ts";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -40,32 +40,27 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
           pipeline: [
             {
               $match: {
-                $expr: { $eq: ["$_id", "$$hospitalId"] }
-              }
+                $expr: { $eq: ["$_id", "$$hospitalId"] },
+              },
             },
             {
               $project: {
                 _id: 1,
-                hospitalName: 1
-              }
-            }
+                hospitalName: 1,
+              },
+            },
           ],
-          as: "hospital"
-        }
+          as: "hospital",
+        },
       },
       { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
       { $sort: { createdAt: -1 } },
       {
         $facet: {
-          data: [
-            { $skip: skip },
-            { $limit: limit }
-          ],
-          totalCount: [
-            { $count: "total" }
-          ]
-        }
-      }
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: "total" }],
+        },
+      },
     ];
 
     const result = await Notes.aggregate(pipeline);
@@ -78,67 +73,77 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
       limit,
       totalNotes: total,
       totalPages: Math.ceil(total / limit),
-      data: notesList
+      data: notesList,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve notes",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-export const getNoteById = async (req: Request, res: Response): Promise<void> => {
+export const getNoteById = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
-    const note = await Notes.findById(id).populate('hospital', 'hospitalName');
+    const note = await Notes.findById(id).populate("hospital", "hospitalName");
 
     if (!note) {
-      res.status(404).json({ success: false, message: 'Note not found' });
+      res.status(404).json({ success: false, message: "Note not found" });
       return;
     }
 
     res.status(200).json({ success: true, data: note });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Error fetching note', error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error fetching note",
+        error: error.message,
+      });
   }
 };
 
-export const createNote = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createNote = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const noteText = req.body.note || "";
 
     const mentions = noteText.match(/@([\w\s]+)/g) || [];
 
     const cleanedMentions = mentions.map((m: string) =>
-      m.replace("@", "").trim().toLowerCase()
+      m.replace("@", "").trim().toLowerCase(),
     );
 
-    console.log("Tagged users:", cleanedMentions);
+    console.log("Tagged users 0000000000000:", cleanedMentions);
 
     if (cleanedMentions.length > 0) {
       try {
         const validUsers = await User.find({
           name: {
             $in: cleanedMentions.map(
-              (name: string) => new RegExp(`^${name}$`, "i")
-            )
-          }
+              (name: string) => new RegExp(`^${name}$`, "i"),
+            ),
+          },
         });
 
         if (validUsers.length > 0) {
-          const userIds = validUsers.map(u => u._id.toString());
+          const userIds = validUsers.map((u) => u._id.toString());
 
           // ✅ NOW this is correct
           await sendPushToUsers(userIds, {
             title: `${req.user?.name} mentioned you in a note`,
             message: noteText,
-            url: `${process.env.FRONTEND_URL}`
+            url: `${process.env.FRONTEND_URL}`,
           });
         }
-
       } catch (err) {
         console.error("Error sending mention notifications", err);
       }
@@ -146,7 +151,7 @@ export const createNote = async (req: AuthRequest, res: Response): Promise<void>
 
     const noteData = {
       ...req.body,
-      user: req.user?._id
+      user: req.user?._id,
     };
 
     const newNote = new Notes(noteData);
@@ -154,44 +159,66 @@ export const createNote = async (req: AuthRequest, res: Response): Promise<void>
     await newNote.populate("hospital", "hospitalName");
 
     res.status(201).json({ success: true, data: newNote });
-
   } catch (error: any) {
     res.status(400).json({
       success: false,
       message: "Failed to create note",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-export const updateNote = async (req: Request, res: Response): Promise<void> => {
+export const updateNote = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
-    const updatedNote = await Notes.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).populate('hospital', 'hospitalName');
+    const updatedNote = await Notes.findByIdAndUpdate(id, req.body, {
+      new: true,
+      runValidators: true,
+    }).populate("hospital", "hospitalName");
 
     if (!updatedNote) {
-      res.status(404).json({ success: false, message: 'Note not found' });
+      res.status(404).json({ success: false, message: "Note not found" });
       return;
     }
 
     res.status(200).json({ success: true, data: updatedNote });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Failed to update note', error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to update note",
+        error: error.message,
+      });
   }
 };
 
-export const deleteNote = async (req: Request, res: Response): Promise<void> => {
+export const deleteNote = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const note = await Notes.findByIdAndDelete(id);
 
     if (!note) {
-      res.status(404).json({ success: false, message: 'Note not found' });
+      res.status(404).json({ success: false, message: "Note not found" });
       return;
     }
 
-    res.status(200).json({ success: true, message: 'Note deleted successfully' });
+    res
+      .status(200)
+      .json({ success: true, message: "Note deleted successfully" });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Error deleting note', error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error deleting note",
+        error: error.message,
+      });
   }
 };
