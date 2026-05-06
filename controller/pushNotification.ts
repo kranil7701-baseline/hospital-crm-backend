@@ -158,7 +158,9 @@ export const checkPushSubscription = async (
       });
     }
 
-    const subscription = await PushSubscription.findOne({ user: userId });
+    const subscription = await PushSubscription.findOne({
+      user: userId,
+    }).select("-keys"); // 🔒 hide sensitive data
 
     if (!subscription) {
       return res.status(200).json({
@@ -169,7 +171,6 @@ export const checkPushSubscription = async (
       });
     }
 
-    // ✅ if subscribed
     return res.status(200).json({
       success: true,
       isSubscribed: true,
