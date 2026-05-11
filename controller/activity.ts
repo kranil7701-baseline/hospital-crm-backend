@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import { sendPushToUsers } from "./pushNotification.ts";
 import User from "../model/User.ts";
 import dotenv from "dotenv";
+import { sendGraphEmail } from "../helper/graphEmail.ts";
 
 dotenv.config();
 
@@ -225,6 +226,25 @@ export const createActivity = async (
             message: textToSearch,
             url: `${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}`,
           });
+
+          // ✅ Send Email Notifications
+          for (const user of validUsers) {
+            if (user.email && (req as any).user?.email) {
+              sendGraphEmail(
+                (req as any).user.email,
+                user.email,
+                `${(req as any).user.name} mentioned you in a ${type}`,
+                `<p>Hello ${user.name},</p>
+                 <p><strong>${(req as any).user.name}</strong> mentioned you in a <strong>${type}</strong>:</p>
+                 <blockquote style="border-left: 4px solid #ccc; padding-left: 10px; margin: 10px 0;">
+                   ${textToSearch}
+                 </blockquote>
+                 <p>You can view it here: <a href="${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}">${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}</a></p>`
+              ).catch((err) =>
+                console.error(`Failed to send email to ${user.email}`, err),
+              );
+            }
+          }
         }
       } catch (err) {
         console.error("Error sending mention notifications", err);
