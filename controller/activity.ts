@@ -202,7 +202,7 @@ export const createActivity = async (
       m.replace("@", "").trim().toLowerCase(),
     );
 
-    // console.log(cleanedMentions, "000000000000000000");
+    console.log(cleanedMentions, "000000000000000000");
 
     if (cleanedMentions.length > 0) {
       try {
