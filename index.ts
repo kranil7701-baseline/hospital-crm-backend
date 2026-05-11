@@ -136,20 +136,35 @@ app.use("/api/document", documentRoutes);
 app.use("/api/graph-app", graphAppOnlyRoutes);
 app.use("/api/push", pushNotificationRoutes);
 
-if (process.env.NODE_ENV !== "production") {
-  const startServer = async () => {
-    try {
-      await connectDB(); // 🔥 connect DB first
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`🚀 Server running on port ${PORT}`);
-      });
-    } catch (err) {
-      console.error("❌ MongoDB Connection Failed:", err);
-      process.exit(1);
-    }
-  };
+// if (process.env.NODE_ENV !== "production") {
+//   const startServer = async () => {
+//     try {
+//       await connectDB(); // 🔥 connect DB first
+//       app.listen(PORT, "0.0.0.0", () => {
+//         console.log(`🚀 Server running on port ${PORT}`);
+//       });
+//     } catch (err) {
+//       console.error("❌ MongoDB Connection Failed:", err);
+//       process.exit(1);
+//     }
+//   };
 
-  startServer();
-}
+//   startServer();
+// }
+
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ MongoDB Connection Failed:", err);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 export default app;
