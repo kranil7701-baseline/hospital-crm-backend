@@ -8,7 +8,7 @@ export const uploadAndCreateDocument = async (
     res: Response,
 ): Promise<void> => {
     try {
-        if (!req.file) {
+        if (!(req as any).file) {
             res.status(400).json({ success: false, message: "No file uploaded" });
             return;
         }
@@ -16,7 +16,7 @@ export const uploadAndCreateDocument = async (
         const { name, category, hospitalId } = req.body;
 
         if (!name || !hospitalId) {
-            fs.unlinkSync(req.file.path);
+            fs.unlinkSync((req as any).file.path);
             res.status(400).json({
                 success: false,
                 message: "Name and Hospital ID are required",
@@ -24,17 +24,17 @@ export const uploadAndCreateDocument = async (
             return;
         }
 
-        const fileUrl = `/uploads/${req.file.filename}`;
+        const fileUrl = `/uploads/${(req as any).file.filename}`;
 
         const newDocument = await DocumentModel.create({
             name,
             category: category || "Other",
             fileUrl,
-            filename: req.file.filename,
+            filename: (req as any).file.filename,
             hospital: hospitalId,
             user: (req as any).user._id,
-            fileSize: req.file.size,
-            fileType: req.file.mimetype,
+            fileSize: (req as any).file.size,
+            fileType: (req as any).file.mimetype,
         });
 
         res.status(201).json({
@@ -43,8 +43,8 @@ export const uploadAndCreateDocument = async (
             data: newDocument,
         });
     } catch (error: any) {
-        if (req.file) {
-            fs.unlinkSync(req.file.path);
+        if ((req as any).file) {
+            fs.unlinkSync((req as any).file.path);
         }
         res.status(500).json({
             success: false,
