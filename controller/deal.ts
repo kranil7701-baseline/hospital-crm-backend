@@ -1,12 +1,12 @@
-import type { Request, Response } from 'express';
-import type { AuthRequest } from '../middleware/authMiddleware.ts';
-import Deal from '../model/deal.ts';
-import mongoose from 'mongoose';
-import Product from '../model/Product.ts';
-import Hospital from '../model/Hospital.ts';
-import Task from '../model/Task.ts';
-import Notes from '../model/Notes.ts';
-import CallLog from '../model/CallLogs.ts';
+import type { Request, Response } from "express";
+import type { AuthRequest } from "../middleware/authMiddleware.ts";
+import Deal from "../model/deal.ts";
+import mongoose from "mongoose";
+import Product from "../model/Product.ts";
+import Hospital from "../model/Hospital.ts";
+import Task from "../model/Task.ts";
+import Notes from "../model/Notes.ts";
+import CallLog from "../model/CallLogs.ts";
 
 /*
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -253,19 +253,27 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 };
 */
 
-export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getDeals = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const searchQuery = (req.query.search as string) || "";
     const userId = req.query.userId as string;
     const productIdsRaw = req.query.productIds as string | string[];
     const gpoId = req.query.gpoId as string;
+    const page = req.query.page ? parseInt(req.query.page as string) : null;
+    const limit = 15;
+    const skip = page ? (page - 1) * limit : 0;
 
     let productIds: mongoose.Types.ObjectId[] = [];
     if (productIdsRaw) {
-      const idsArray = Array.isArray(productIdsRaw) ? productIdsRaw : (productIdsRaw as string).split(',');
+      const idsArray = Array.isArray(productIdsRaw)
+        ? productIdsRaw
+        : (productIdsRaw as string).split(",");
       productIds = idsArray
-        .filter(id => mongoose.Types.ObjectId.isValid(id.trim()))
-        .map(id => new mongoose.Types.ObjectId(id.trim()));
+        .filter((id) => mongoose.Types.ObjectId.isValid(id.trim()))
+        .map((id) => new mongoose.Types.ObjectId(id.trim()));
     }
 
     const matchStage: any = {};
@@ -291,67 +299,66 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
       { $match: matchStage },
 
       {
+        $unwind: {
+          path: "$products",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // 🔥 PRODUCT FILTER
+      ...(productIds.length > 0
+        ? [
+            {
+              $match: {
+                "products.product": { $in: productIds },
+              },
+            },
+          ]
+        : []),
+
+      // 🔥 ENRICH WITH HOSPITAL (Needed for search)
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "hospital",
+          foreignField: "_id",
+          as: "hospital",
+        },
+      },
+      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+
+      // 🔥 SEARCH FILTER
+      ...(searchQuery
+        ? [
+            {
+              $match: {
+                $or: [
+                  { "products.stage": { $regex: searchQuery, $options: "i" } },
+                  {
+                    "hospital.hospitalName": {
+                      $regex: searchQuery,
+                      $options: "i",
+                    },
+                  },
+                ],
+              },
+            },
+          ]
+        : []),
+
+      {
         $facet: {
           // =========================
           // DEALS DATA
           // =========================
           deals: [
             {
-              $unwind: {
-                path: "$products",
-                preserveNullAndEmptyArrays: true
-              }
-            },
-
-            // =========================
-            // 🔥 PRODUCT FILTER (NEW)
-            // =========================
-            ...(productIds.length > 0
-              ? [
-                {
-                  $match: {
-                    "products.product": { $in: productIds }
-                  }
-                }
-              ]
-              : []),
-
-            // =========================
-            // 🔍 SEARCH FILTER
-            // =========================
-            ...(searchQuery
-              ? [
-                {
-                  $match: {
-                    "products.stage": {
-                      $regex: searchQuery,
-                      $options: "i"
-                    }
-                  }
-                }
-              ]
-              : []),
-
-            // =========================
-            // LOOKUPS
-            // =========================
-            {
-              $lookup: {
-                from: "hospitals",
-                localField: "hospital",
-                foreignField: "_id",
-                as: "hospital"
-              }
-            },
-            { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
-
-            {
               $lookup: {
                 from: "idns",
                 localField: "hospital.idn",
                 foreignField: "_id",
-                as: "idn"
-              }
+                as: "idn",
+              },
             },
             { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
 
@@ -360,8 +367,8 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
                 from: "gpos",
                 localField: "hospital.gpo",
                 foreignField: "_id",
-                as: "gpo"
-              }
+                as: "gpo",
+              },
             },
             { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
 
@@ -370,14 +377,14 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
                 from: "products",
                 localField: "products.product",
                 foreignField: "_id",
-                as: "products.product"
-              }
+                as: "products.product",
+              },
             },
             {
               $unwind: {
                 path: "$products.product",
-                preserveNullAndEmptyArrays: true
-              }
+                preserveNullAndEmptyArrays: true,
+              },
             },
 
             {
@@ -385,18 +392,14 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
                 from: "users",
                 localField: "user",
                 foreignField: "_id",
-                as: "user"
-              }
+                as: "user",
+              },
             },
             { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
 
-            // =========================
-            // FINAL SHAPE
-            // =========================
             {
               $project: {
                 dealId: "$_id",
-
                 hospital: {
                   hospitalName: "$hospital.hospitalName",
                   city: "$hospital.city",
@@ -404,73 +407,46 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
                   zip: "$hospital.zip",
                   idn: {
                     _id: "$idn._id",
-                    name: "$idn.name"
+                    name: "$idn.name",
                   },
                   gpo: {
                     _id: "$gpo._id",
-                    name: "$gpo.name"
-                  }
+                    name: "$gpo.name",
+                  },
                 },
-
                 product: "$products.product",
                 dealAmount: "$products.dealAmount",
                 stage: "$products.stage",
-
                 user: {
                   _id: "$user._id",
-                  name: "$user.name"
+                  name: "$user.name",
                 },
-
-                createdAt: 1
-              }
+                createdAt: 1,
+              },
             },
-
-            { $sort: { createdAt: -1 } }
+            { $sort: { createdAt: -1 } },
+            ...(page ? [{ $skip: skip }, { $limit: limit }] : []),
           ],
 
-          // =========================
-          // TOTAL HOSPITALS
-          // =========================
+          totalDealsCount: [{ $count: "count" }],
+
           totalHospitals: [
-            {
-              $group: {
-                _id: "$hospital"
-              }
-            },
-            { $count: "count" }
+            { $group: { _id: "$hospital._id" } },
+            { $count: "count" },
           ],
 
-          // =========================
-          // CLOSED BUSINESS
-          // =========================
           closedBusiness: [
-            { $unwind: "$products" },
-
-            ...(productIds.length > 0
-              ? [
-                {
-                  $match: {
-                    "products.product": { $in: productIds }
-                  }
-                }
-              ]
-              : []),
-
-            {
-              $match: {
-                "products.stage": "Closed Won"
-              }
-            },
-
-            { $count: "count" }
-          ]
-        }
-      }
+            { $match: { "products.stage": "Closed Won" } },
+            { $count: "count" },
+          ],
+        },
+      },
     ];
 
     const result = await Deal.aggregate(pipeline);
 
     const deals = result[0]?.deals || [];
+    const totalDealsCount = result[0]?.totalDealsCount[0]?.count || 0;
     const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
     const closedBusiness = result[0]?.closedBusiness[0]?.count || 0;
 
@@ -483,23 +459,23 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
             // 🔥 USER FILTER (important)
             ...(userId && mongoose.Types.ObjectId.isValid(userId)
               ? [
-                {
-                  $match: {
-                    user: new mongoose.Types.ObjectId(userId)
-                  }
-                }
-              ]
+                  {
+                    $match: {
+                      user: new mongoose.Types.ObjectId(userId),
+                    },
+                  },
+                ]
               : []),
 
             // 🔥 GPO FILTER
             ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
-                {
-                  $match: {
-                    gpo: new mongoose.Types.ObjectId(gpoId)
-                  }
-                }
-              ]
+                  {
+                    $match: {
+                      gpo: new mongoose.Types.ObjectId(gpoId),
+                    },
+                  },
+                ]
               : []),
 
             { $unwind: "$products" },
@@ -508,13 +484,13 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
             {
               $match: {
                 $expr: {
-                  $eq: ["$products.product", "$$productId"]
-                }
-              }
-            }
+                  $eq: ["$products.product", "$$productId"],
+                },
+              },
+            },
           ],
-          as: "dealData"
-        }
+          as: "dealData",
+        },
       },
 
       // =========================
@@ -527,23 +503,20 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
               // if productIds are passed → only those products get real revenue
               productIds.length > 0
                 ? {
-                  $in: [
-                    "$_id",
-                    productIds
-                  ]
-                }
+                    $in: ["$_id", productIds],
+                  }
                 : true,
 
               // true case → sum revenue
               {
-                $sum: "$dealData.products.dealAmount"
+                $sum: "$dealData.products.dealAmount",
               },
 
               // false case → force 0
-              0
-            ]
-          }
-        }
+              0,
+            ],
+          },
+        },
       },
 
       {
@@ -551,40 +524,44 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
           _id: 0,
           productId: "$_id",
           productName: "$name",
-          ARR: 1
-        }
+          ARR: 1,
+        },
       },
 
-      { $sort: { ARR: -1 } }
+      { $sort: { ARR: -1 } },
     ]);
 
     res.status(200).json({
       success: true,
-      totalDeals: deals.length,
+      totalDeals: totalDealsCount,
+      page: page || 1,
+      limit: page ? limit : totalDealsCount,
+      totalPages: page ? Math.ceil(totalDealsCount / limit) : 1,
       totalHospitals,
       closedBusiness,
       productRevenue,
-      data: deals
+      data: deals,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve deals",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-export const createDeal = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createDeal = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const { products, ...rest } = req.body;
 
     if (!products || !products.length) {
       res.status(400).json({
         success: false,
-        message: "At least one product is required"
+        message: "At least one product is required",
       });
       return;
     }
@@ -592,7 +569,7 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
     const dealsToInsert = products.map((product: any) => ({
       ...rest,
       user: req.user?._id,
-      products: [product] // only ONE product per document
+      products: [product], // only ONE product per document
     }));
 
     const createdDeals = await Deal.insertMany(dealsToInsert);
@@ -600,21 +577,21 @@ export const createDeal = async (req: AuthRequest, res: Response): Promise<void>
     res.status(201).json({
       success: true,
       count: createdDeals.length,
-      data: createdDeals
+      data: createdDeals,
     });
-
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to create deals',
-      error: error.message
+      message: "Failed to create deals",
+      error: error.message,
     });
   }
 };
 
-
-
-export const updateDealProductStage = async (req: Request, res: Response): Promise<void> => {
+export const updateDealProductStage = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { dealId, productId, stage } = req.body;
 
@@ -622,7 +599,7 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
     if (!dealId || !productId || !stage) {
       res.status(400).json({
         success: false,
-        message: "dealId, productId and stage are required"
+        message: "dealId, productId and stage are required",
       });
       return;
     }
@@ -634,7 +611,7 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
     ) {
       res.status(400).json({
         success: false,
-        message: "Invalid ObjectId(s)"
+        message: "Invalid ObjectId(s)",
       });
       return;
     }
@@ -643,23 +620,23 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
     const updatedDeal = await Deal.findOneAndUpdate(
       {
         _id: new mongoose.Types.ObjectId(dealId),
-        "products.product": new mongoose.Types.ObjectId(productId)
+        "products.product": new mongoose.Types.ObjectId(productId),
       },
       {
         $set: {
-          "products.$.stage": stage
-        }
+          "products.$.stage": stage,
+        },
       },
       {
         new: true,
-        runValidators: true
-      }
+        runValidators: true,
+      },
     );
 
     if (!updatedDeal) {
       res.status(404).json({
         success: false,
-        message: "Deal or product not found"
+        message: "Deal or product not found",
       });
       return;
     }
@@ -667,27 +644,28 @@ export const updateDealProductStage = async (req: Request, res: Response): Promi
     res.status(200).json({
       success: true,
       message: "Stage updated successfully",
-      data: updatedDeal
+      data: updatedDeal,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to update stage",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-export const removeDeal = async (req: Request, res: Response): Promise<void> => {
+export const removeDeal = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
-    const dealId = req.params.dealId || req.query.dealId as string;
+    const dealId = req.params.dealId || (req.query.dealId as string);
 
     if (!dealId) {
       res.status(400).json({
         success: false,
-        message: "dealId is required"
+        message: "dealId is required",
       });
       return;
     }
@@ -697,7 +675,7 @@ export const removeDeal = async (req: Request, res: Response): Promise<void> => 
     if (!deletedDeal) {
       res.status(404).json({
         success: false,
-        message: "Deal not found"
+        message: "Deal not found",
       });
       return;
     }
@@ -707,18 +685,19 @@ export const removeDeal = async (req: Request, res: Response): Promise<void> => 
       message: "Deal deleted successfully",
       //  data: deletedDeal
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to delete deal",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-export const addProductToDeal = async (req: Request, res: Response): Promise<void> => {
+export const addProductToDeal = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const hospitalId = req.query.hospitalId as string;
 
@@ -729,13 +708,13 @@ export const addProductToDeal = async (req: Request, res: Response): Promise<voi
       expectedCloseDate,
       dealDate,
       idn,
-      gpo
+      gpo,
     } = req.body;
 
     if (!hospitalId || !product || !idn || !gpo) {
       res.status(400).json({
         success: false,
-        message: "hospitalId, product, idn and gpo are required"
+        message: "hospitalId, product, idn and gpo are required",
       });
       return;
     }
@@ -751,9 +730,9 @@ export const addProductToDeal = async (req: Request, res: Response): Promise<voi
           dealAmount,
           stage,
           expectedCloseDate,
-          dealDate
-        }
-      ]
+          dealDate,
+        },
+      ],
     });
 
     await newDeal.save();
@@ -761,37 +740,33 @@ export const addProductToDeal = async (req: Request, res: Response): Promise<voi
     res.status(201).json({
       success: true,
       message: "Deal created successfully",
-      data: newDeal
+      data: newDeal,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to create deal",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-
-export const updateDeal = async (req: Request, res: Response): Promise<void> => {
+export const updateDeal = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const dealId = req.params.dealId || (req.query.dealId as string);
 
     // console.log(dealId)
 
-    const {
-      dealAmount,
-      stage,
-      expectedCloseDate,
-      dealDate,
-      product
-    } = req.body;
+    const { dealAmount, stage, expectedCloseDate, dealDate, product } =
+      req.body;
 
     if (!dealId) {
       res.status(400).json({
         success: false,
-        message: "dealId is required"
+        message: "dealId is required",
       });
       return;
     }
@@ -799,21 +774,23 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
     const updateFields: any = {};
 
     if (product) updateFields["products.0.product"] = product;
-    if (dealAmount !== undefined) updateFields["products.0.dealAmount"] = dealAmount;
+    if (dealAmount !== undefined)
+      updateFields["products.0.dealAmount"] = dealAmount;
     if (stage) updateFields["products.0.stage"] = stage;
-    if (expectedCloseDate) updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
+    if (expectedCloseDate)
+      updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
     if (dealDate) updateFields["products.0.dealDate"] = dealDate;
 
     const updatedDeal = await Deal.findByIdAndUpdate(
       dealId,
       { $set: updateFields },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!updatedDeal) {
       res.status(404).json({
         success: false,
-        message: "Deal not found"
+        message: "Deal not found",
       });
       return;
     }
@@ -821,21 +798,16 @@ export const updateDeal = async (req: Request, res: Response): Promise<void> => 
     res.status(200).json({
       success: true,
       message: "Deal updated successfully",
-      data: updatedDeal
+      data: updatedDeal,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to update deal",
-      error: error.message
+      error: error.message,
     });
   }
 };
-
-
-
-
 
 /*
 export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -1083,7 +1055,10 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
 };
 */
 
-export const getDashboardStats = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getDashboardStats = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const userId = req.user?._id;
 
@@ -1097,30 +1072,23 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
     // =========================
     // 🔥 BASIC COUNTS
     // =========================
-    const [
-      totalHospitals,
-      totalHospitalsInDB,
-      totalProductsInDB
-    ] = await Promise.all([
-      Hospital.countDocuments({ user: objectUserId }),
-      Hospital.countDocuments({}),
-      Product.countDocuments({})
-    ]);
+    const [totalHospitals, totalHospitalsInDB, totalProductsInDB] =
+      await Promise.all([
+        Hospital.countDocuments({ user: objectUserId }),
+        Hospital.countDocuments({}),
+        Product.countDocuments({}),
+      ]);
 
     // =========================
     // 🔥 TASKS + ACTIVITY
     // =========================
-    const [
-      tasks,
-      notes,
-      callLogs
-    ] = await Promise.all([
+    const [tasks, notes, callLogs] = await Promise.all([
       Task.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
       Notes.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
       CallLog.find({ user: objectUserId })
         .populate("contact", "firstName lastName") // 🔥 POPULATED CONTACT
         .sort({ createdAt: -1 })
-        .limit(5)
+        .limit(5),
     ]);
 
     // =========================
@@ -1133,7 +1101,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
       "Trial",
       "Pending Decision",
       "Closed Won",
-      "Implemented"
+      "Implemented",
     ];
 
     // =========================
@@ -1152,7 +1120,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                 _id: null,
 
                 totalPipelineAmount: {
-                  $sum: "$products.dealAmount"
+                  $sum: "$products.dealAmount",
                 },
 
                 closedWonAmount: {
@@ -1160,9 +1128,9 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                     $cond: [
                       { $eq: ["$products.stage", "Closed Won"] },
                       "$products.dealAmount",
-                      0
-                    ]
-                  }
+                      0,
+                    ],
+                  },
                 },
 
                 implementedAmount: {
@@ -1170,30 +1138,22 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                     $cond: [
                       { $eq: ["$products.stage", "Implemented"] },
                       "$products.dealAmount",
-                      0
-                    ]
-                  }
+                      0,
+                    ],
+                  },
                 },
 
                 // ================= COUNTS =================
                 closedWonProductsCount: {
                   $sum: {
-                    $cond: [
-                      { $eq: ["$products.stage", "Closed Won"] },
-                      1,
-                      0
-                    ]
-                  }
+                    $cond: [{ $eq: ["$products.stage", "Closed Won"] }, 1, 0],
+                  },
                 },
 
                 implementedProductsCount: {
                   $sum: {
-                    $cond: [
-                      { $eq: ["$products.stage", "Implemented"] },
-                      1,
-                      0
-                    ]
-                  }
+                    $cond: [{ $eq: ["$products.stage", "Implemented"] }, 1, 0],
+                  },
                 },
 
                 // ================= ACTIVE DEALS =================
@@ -1203,16 +1163,16 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                       {
                         $and: [
                           { $ne: ["$products.stage", "Closed Won"] },
-                          { $ne: ["$products.stage", "Implemented"] }
-                        ]
+                          { $ne: ["$products.stage", "Implemented"] },
+                        ],
                       },
                       1,
-                      0
-                    ]
-                  }
-                }
-              }
-            }
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
           ],
 
           // ================= PIPELINE =================
@@ -1221,17 +1181,17 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
               $group: {
                 _id: "$products.stage",
                 amount: { $sum: "$products.dealAmount" },
-                hospitals: { $addToSet: "$hospital" }
-              }
+                hospitals: { $addToSet: "$hospital" },
+              },
             },
             {
               $project: {
                 _id: 0,
                 stage: "$_id",
                 amount: 1,
-                hospitalCount: { $size: "$hospitals" }
-              }
-            }
+                hospitalCount: { $size: "$hospitals" },
+              },
+            },
           ],
 
           // ================= CLOSED WON =================
@@ -1248,10 +1208,10 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                     dealAmount: "$products.dealAmount",
                     stage: "$products.stage",
                     expectedCloseDate: "$products.expectedCloseDate",
-                    dealDate: "$products.dealDate"
-                  }
-                }
-              }
+                    dealDate: "$products.dealDate",
+                  },
+                },
+              },
             },
 
             {
@@ -1259,8 +1219,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                 from: "hospitals",
                 localField: "_id",
                 foreignField: "_id",
-                as: "hospital"
-              }
+                as: "hospital",
+              },
             },
 
             { $unwind: "$hospital" },
@@ -1269,9 +1229,9 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
               $project: {
                 _id: "$hospital._id",
                 hospitalName: "$hospital.hospitalName",
-                products: 1
-              }
-            }
+                products: 1,
+              },
+            },
           ],
 
           // ================= IMPLEMENTED =================
@@ -1288,10 +1248,10 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                     dealAmount: "$products.dealAmount",
                     stage: "$products.stage",
                     expectedCloseDate: "$products.expectedCloseDate",
-                    dealDate: "$products.dealDate"
-                  }
-                }
-              }
+                    dealDate: "$products.dealDate",
+                  },
+                },
+              },
             },
 
             {
@@ -1299,8 +1259,8 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                 from: "hospitals",
                 localField: "_id",
                 foreignField: "_id",
-                as: "hospital"
-              }
+                as: "hospital",
+              },
             },
 
             { $unwind: "$hospital" },
@@ -1309,12 +1269,12 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
               $project: {
                 _id: "$hospital._id",
                 hospitalName: "$hospital.hospitalName",
-                products: 1
-              }
-            }
-          ]
-        }
-      }
+                products: 1,
+              },
+            },
+          ],
+        },
+      },
     ]);
 
     const data = result[0];
@@ -1323,13 +1283,13 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
     // 🔥 PIPELINE MAP
     // =========================
     const pipelineMap = new Map<string, any>(
-      (data?.pipelineRaw || []).map((p: any) => [p.stage, p])
+      (data?.pipelineRaw || []).map((p: any) => [p.stage, p]),
     );
 
-    const pipeline = stages.map(stage => ({
+    const pipeline = stages.map((stage) => ({
       stage,
       amount: pipelineMap.get(stage)?.amount || 0,
-      hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0
+      hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0,
     }));
 
     // =========================
@@ -1350,13 +1310,13 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
         closedWon: {
           amount: data?.totals?.[0]?.closedWonAmount || 0,
           productsCount: data?.totals?.[0]?.closedWonProductsCount || 0,
-          hospitals: data?.closedWon || []
+          hospitals: data?.closedWon || [],
         },
 
         implemented: {
           amount: data?.totals?.[0]?.implementedAmount || 0,
           productsCount: data?.totals?.[0]?.implementedProductsCount || 0,
-          hospitals: data?.implemented || []
+          hospitals: data?.implemented || [],
         },
 
         pipeline,
@@ -1367,28 +1327,30 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
         // 🔥 RECENT ACTIVITY (MERGED)
         // =========================
         recentActivity: [
-          ...((notes || []).map(n => ({
+          ...(notes || []).map((n) => ({
             type: "note",
             data: n,
-            createdAt: n.createdAt
-          }))),
+            createdAt: n.createdAt,
+          })),
 
-          ...((callLogs || []).map(c => ({
+          ...(callLogs || []).map((c) => ({
             type: "callLog",
             data: c,
-            createdAt: c.createdAt
-          })))
+            createdAt: c.createdAt,
+          })),
         ]
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5)
-      }
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .slice(0, 5),
+      },
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to fetch dashboard stats",
-      error: error.message
+      error: error.message,
     });
   }
 };

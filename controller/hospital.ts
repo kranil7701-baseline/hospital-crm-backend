@@ -1,13 +1,17 @@
-import type { Request, Response } from 'express';
-import type { AuthRequest } from '../middleware/authMiddleware.ts';
-import Hospital from '../model/Hospital.ts';
-import GPO from '../model/Gpo.ts';
-import IDN from '../model/Idn.ts';
+import type { Request, Response } from "express";
+import type { AuthRequest } from "../middleware/authMiddleware.ts";
+import Hospital from "../model/Hospital.ts";
+import GPO from "../model/Gpo.ts";
+import IDN from "../model/Idn.ts";
 import mongoose from "mongoose";
-import Deal from '../model/deal.ts';
-import Contact from '../model/Contact.ts';
+import Deal from "../model/deal.ts";
+import Contact from "../model/Contact.ts";
+import { UserRole } from "../model/User.ts";
 
-export const getHospitals = async (req: Request, res: Response): Promise<void> => {
+export const getHospitals = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const search = (req.query.search as string) || "";
@@ -23,7 +27,7 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
     if (search) {
       searchQuery.$or = [
         { hospitalName: { $regex: search, $options: "i" } },
-        { city: { $regex: search, $options: "i" } }
+        { city: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -33,10 +37,10 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
 
     // Base query
     let query = Hospital.find(searchQuery)
-      .select('hospitalName gpo idn')
+      .select("hospitalName gpo idn")
       .sort({ createdAt: -1 })
-      .populate({ path: 'gpo', select: 'name' })
-      .populate({ path: 'idn', select: 'name' });
+      .populate({ path: "gpo", select: "name" })
+      .populate({ path: "idn", select: "name" });
 
     // Apply pagination ONLY if limit exists
     if (limit) {
@@ -48,18 +52,17 @@ export const getHospitals = async (req: Request, res: Response): Promise<void> =
 
     res.status(200).json({
       success: true,
-      page: limit ? page : 1,                         // reset page if no limit
-      limit: limit || total,                          // show total if no limit
+      page: limit ? page : 1, // reset page if no limit
+      limit: limit || total, // show total if no limit
       totalHospitals: total,
       totalPages: limit ? Math.ceil(total / limit) : 1, // avoid division by null
-      data: hospitals
+      data: hospitals,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve hospitals",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -117,8 +120,10 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
 };
 */
 
-
-export const getHospitalByHospitalId = async (req: Request, res: Response): Promise<void> => {
+export const getHospitalByHospitalId = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
 
@@ -142,7 +147,7 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
 
     // 2. Get contacts linked to hospital ✅
     const contacts = await Contact.find({ hospital: id }).select(
-      "firstName lastName phoneNumber designation email isPrimary"
+      "firstName lastName phoneNumber designation email isPrimary",
     );
 
     // 3. Get deals
@@ -173,111 +178,137 @@ export const getHospitalByHospitalId = async (req: Request, res: Response): Prom
   }
 };
 
-
-
-
-export const createHospital = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createHospital = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const hospitalData = {
       ...req.body,
-      user: req.user?._id
+      user: req.user?._id,
     };
 
     const hospital = new Hospital(hospitalData);
     await hospital.save();
 
     if (hospital.gpo) {
-      await GPO.findByIdAndUpdate(hospital.gpo, { $addToSet: { hospitals: hospital._id } }
-      );
+      await GPO.findByIdAndUpdate(hospital.gpo, {
+        $addToSet: { hospitals: hospital._id },
+      });
     }
 
     if (hospital.idn) {
-      await IDN.findByIdAndUpdate(hospital.idn, { $addToSet: { hospitals: hospital._id } });
+      await IDN.findByIdAndUpdate(hospital.idn, {
+        $addToSet: { hospitals: hospital._id },
+      });
     }
 
     res.status(201).json({
       success: true,
-      data: hospital
+      data: hospital,
     });
-
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to create hospital',
-      error: error.message
+      message: "Failed to create hospital",
+      error: error.message,
     });
   }
 };
 
-
-export const deleteHospital = async (req: Request, res: Response): Promise<void> => {
+export const deleteHospital = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
 
-    if (typeof id !== 'string') {
-      res.status(400).json({ success: false, message: 'Invalid ID' });
+    if (typeof id !== "string") {
+      res.status(400).json({ success: false, message: "Invalid ID" });
       return;
     }
 
     const hospital = await Hospital.findById(id);
 
     if (!hospital) {
-      res.status(404).json({ success: false, message: 'Hospital not found' });
+      res.status(404).json({ success: false, message: "Hospital not found" });
       return;
     }
 
     if (hospital.gpo) {
-      await GPO.findByIdAndUpdate(
-        hospital.gpo,
-        { $pull: { hospitals: hospital._id } }
-      );
+      await GPO.findByIdAndUpdate(hospital.gpo, {
+        $pull: { hospitals: hospital._id },
+      });
     }
 
     if (hospital.idn) {
-      await IDN.findByIdAndUpdate(
-        hospital.idn,
-        { $pull: { hospitals: hospital._id } }
-      );
+      await IDN.findByIdAndUpdate(hospital.idn, {
+        $pull: { hospitals: hospital._id },
+      });
     }
 
     await Hospital.findByIdAndDelete(id);
 
     res.status(200).json({
       success: true,
-      message: 'Hospital deleted successfully'
+      message: "Hospital deleted successfully",
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Error deleting hospital',
-      error: error.message
+      message: "Error deleting hospital",
+      error: error.message,
     });
   }
 };
 
-
-export const updateHospital = async (req: Request, res: Response): Promise<void> => {
+export const updateHospital = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
 
-    if (typeof id !== 'string') {
-      res.status(400).json({ success: false, message: 'Invalid ID' });
+    if (typeof id !== "string") {
+      res.status(400).json({ success: false, message: "Invalid ID" });
       return;
     }
 
+    // Fetch existing hospital to check the current assigned user
+    const hospital = await Hospital.findById(id);
+
+    if (!hospital) {
+      res.status(404).json({ success: false, message: "Hospital not found" });
+      return;
+    }
+
+    const updateData = { ...req.body };
+
+    // Check if the 'user' field is being changed
+    if (
+      updateData.user &&
+      updateData.user.toString() !== hospital.user.toString()
+    ) {
+      if (req.user?.role !== UserRole.ADMIN) {
+        res.status(403).json({
+          success: false,
+          message: "Only Admin can change the assigned user of a hospital",
+        });
+        return;
+      }
+    }
+
     // 🔥 1. Update hospital
-    const updatedHospital = await Hospital.findByIdAndUpdate(
-      id,
-      req.body,
-      { new: true, runValidators: true }
-    )
+    const updatedHospital = await Hospital.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    })
       .populate("idn", "name")
       .populate("gpo", "name")
       .populate("contacts", "firstName lastName designation phoneNumber email");
 
     if (!updatedHospital) {
-      res.status(404).json({ success: false, message: 'Hospital not found' });
+      res.status(404).json({ success: false, message: "Hospital not found" });
       return;
     }
 
@@ -291,45 +322,44 @@ export const updateHospital = async (req: Request, res: Response): Promise<void>
       success: true,
       data: {
         ...updatedHospital.toObject(),
-        deals // 👈 attach deals here
-      }
+        deals, // 👈 attach deals here
+      },
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Failed to update hospital',
-      error: error.message
+      message: "Failed to update hospital",
+      error: error.message,
     });
   }
 };
 
-
-export const getHospitalsByIDN = async (req: Request, res: Response): Promise<void> => {
+export const getHospitalsByIDN = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { idnId } = req.params;
 
     if (!idnId) {
-      res.status(400).json({ message: 'IDN ID is required' });
+      res.status(400).json({ message: "IDN ID is required" });
       return;
     }
 
     const hospitals = await Hospital.find({ idn: idnId })
-      .select('_id hospitalName')
+      .select("_id hospitalName")
       .sort({ hospitalName: 1 });
 
     res.status(200).json({
       success: true,
       count: hospitals.length,
-      data: hospitals
+      data: hospitals,
     });
-
   } catch (error) {
-    console.error('Error fetching hospitals by IDN:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error fetching hospitals by IDN:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };
-
 
 /*
 export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -1173,7 +1203,10 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
 };
 */
 
-export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getAllHospitalsDeals = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -1203,36 +1236,36 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         pipeline: [
           {
             $match: {
-              $expr: { $eq: ["$hospital", "$$hospitalId"] }
-            }
+              $expr: { $eq: ["$hospital", "$$hospitalId"] },
+            },
           },
 
           ...(productStage
             ? [
-              {
-                $match: {
-                  "products.stage": productStage
-                }
-              }
-            ]
+                {
+                  $match: {
+                    "products.stage": productStage,
+                  },
+                },
+              ]
             : []),
 
           {
             $project: {
-              products: 1
-            }
-          }
+              products: 1,
+            },
+          },
         ],
-        as: "deals"
-      }
+        as: "deals",
+      },
     });
 
     // ================= REMOVE EMPTY HOSPITALS ONLY WHEN FILTERED =================
     if (productStage) {
       pipeline.push({
         $match: {
-          deals: { $ne: [], $exists: true }
-        }
+          deals: { $ne: [], $exists: true },
+        },
       });
     }
 
@@ -1250,14 +1283,14 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                   $map: {
                     input: { $ifNull: ["$$this.products", []] },
                     as: "p",
-                    in: "$$p.product"
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
+                    in: "$$p.product",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
     });
 
     // ================= IDN =================
@@ -1267,14 +1300,14 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         let: { idnId: "$idn" },
         pipeline: [
           { $match: { $expr: { $eq: ["$_id", "$$idnId"] } } },
-          { $project: { name: 1, user: 1 } }
+          { $project: { name: 1, user: 1 } },
         ],
-        as: "idn"
-      }
+        as: "idn",
+      },
     });
 
     pipeline.push({
-      $unwind: { path: "$idn", preserveNullAndEmptyArrays: true }
+      $unwind: { path: "$idn", preserveNullAndEmptyArrays: true },
     });
 
     // ================= GPO =================
@@ -1284,14 +1317,14 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         let: { gpoId: "$gpo" },
         pipeline: [
           { $match: { $expr: { $eq: ["$_id", "$$gpoId"] } } },
-          { $project: { name: 1, user: 1 } }
+          { $project: { name: 1, user: 1 } },
         ],
-        as: "gpo"
-      }
+        as: "gpo",
+      },
     });
 
     pipeline.push({
-      $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true }
+      $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true },
     });
 
     // ================= PRODUCTS =================
@@ -1300,8 +1333,8 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         from: "products",
         localField: "allProductIds",
         foreignField: "_id",
-        as: "productsData"
-      }
+        as: "productsData",
+      },
     });
 
     // ================= MAP PRODUCT NAMES =================
@@ -1332,28 +1365,28 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                                         input: "$productsData",
                                         as: "p",
                                         cond: {
-                                          $eq: ["$$p._id", "$$prod.product"]
-                                        }
-                                      }
+                                          $eq: ["$$p._id", "$$prod.product"],
+                                        },
+                                      },
                                     },
                                     as: "m",
-                                    in: "$$m.name"
-                                  }
+                                    in: "$$m.name",
+                                  },
                                 },
-                                0
-                              ]
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
+                                0,
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
     });
 
     // ================= ADD LATEST DEAL DATE =================
@@ -1372,16 +1405,16 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                       $map: {
                         input: { $ifNull: ["$$d.products", []] },
                         as: "p",
-                        in: "$$p.dealDate"
-                      }
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
+                        in: "$$p.dealDate",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
     });
 
     // ================= SORT + LIMIT 2 LATEST DEALS =================
@@ -1392,13 +1425,13 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
             {
               $sortArray: {
                 input: "$deals",
-                sortBy: { dealMaxDate: -1 }
-              }
+                sortBy: { dealMaxDate: -1 },
+              },
             },
-            2
-          ]
-        }
-      }
+            2,
+          ],
+        },
+      },
     });
 
     // ================= DATE CALC =================
@@ -1415,14 +1448,14 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
                   $map: {
                     input: "$$this.products",
                     as: "p",
-                    in: "$$p.expectedCloseDate"
-                  }
-                }
-              ]
-            }
-          }
-        }
-      }
+                    in: "$$p.expectedCloseDate",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
     });
 
     pipeline.push({
@@ -1431,10 +1464,10 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
           $cond: [
             { $gt: [{ $size: "$allDates" }, 0] },
             { $min: "$allDates" },
-            null
-          ]
-        }
-      }
+            null,
+          ],
+        },
+      },
     });
 
     // ================= SEARCH =================
@@ -1444,15 +1477,15 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
           $or: [
             { hospitalName: { $regex: search, $options: "i" } },
             { city: { $regex: search, $options: "i" } },
-            { "idn.name": { $regex: search, $options: "i" } }
-          ]
-        }
+            { "idn.name": { $regex: search, $options: "i" } },
+          ],
+        },
       });
     }
 
     // ================= SORT =================
     pipeline.push({
-      $sort: { minExpectedCloseDate: 1 }
+      $sort: { minExpectedCloseDate: 1 },
     });
 
     // ================= PROJECT =================
@@ -1465,21 +1498,16 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
         idn: 1,
         gpo: 1,
         deals: 1,
-        minExpectedCloseDate: 1
-      }
+        minExpectedCloseDate: 1,
+      },
     });
 
     // ================= PAGINATION =================
     pipeline.push({
       $facet: {
-        data: [
-          { $skip: skip },
-          { $limit: limit }
-        ],
-        totalCount: [
-          { $count: "count" }
-        ]
-      }
+        data: [{ $skip: skip }, { $limit: limit }],
+        totalCount: [{ $count: "count" }],
+      },
     });
 
     const result = await Hospital.aggregate(pipeline);
@@ -1493,14 +1521,13 @@ export const getAllHospitalsDeals = async (req: AuthRequest, res: Response): Pro
       limit,
       totalHospitals: total,
       totalPages: Math.ceil(total / limit),
-      data: hospitals
+      data: hospitals,
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message
+      error: error.message,
     });
   }
 };
