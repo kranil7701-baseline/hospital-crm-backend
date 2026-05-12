@@ -422,6 +422,7 @@ export const getDeals = async (
                   name: "$user.name",
                 },
                 createdAt: 1,
+                expectedCloseDate: "$products.expectedCloseDate",
               },
             },
             { $sort: { createdAt: -1 } },
