@@ -7,6 +7,7 @@ import Hospital from "../model/Hospital.ts";
 import Task from "../model/Task.ts";
 import Notes from "../model/Notes.ts";
 import CallLog from "../model/CallLogs.ts";
+import { UserRole } from "../model/User.ts";
 
 /*
 export const getDeals = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -788,12 +789,12 @@ export const addProductToDeal = async (
 };
 
 export const updateDeal = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
 
-    const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product } =
+    const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product, userId } =
       req.body;
 
     if (!dealId) {
@@ -815,6 +816,35 @@ export const updateDeal = async (
     if (expectedCloseDate)
       updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
     if (dealDate) updateFields["products.0.dealDate"] = dealDate;
+
+    // Handle User assignment
+    if (userId) {
+      const deal = await Deal.findById(dealId);
+      if (!deal) {
+        res.status(404).json({
+          success: false,
+          message: "Deal not found",
+        });
+        return;
+      }
+
+      const isAdmin = req.user?.role === UserRole.ADMIN;
+
+      if (isAdmin) {
+        updateFields.user = userId;
+      } else {
+        // If non-admin sends a different userId than the current one, it's a reassignment attempt
+        if (deal.user.toString() !== userId) {
+          res.status(403).json({
+            success: false,
+            message: "Only admin can change assigned user",
+          });
+          return;
+        }
+        // If they match, it's fine to include it in updateFields (or just ignore)
+        updateFields.user = userId;
+      }
+    }
 
     const updatedDeal = await Deal.findByIdAndUpdate(
       dealId,
