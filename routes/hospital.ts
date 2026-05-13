@@ -10,9 +10,9 @@ router.use(protect);
 router.get('/all-hospitals', getHospitals);
 router.get('/all-hospitals-deals', getAllHospitalsDeals);
 router.get('/:id', getHospitalByHospitalId);
-router.post('/create', createHospital);
-router.put('/:id', updateHospital);
-router.delete('/:id', deleteHospital);
+router.post('/create', authorizeRoles(UserRole.ADMIN), createHospital);
+router.put('/:id', authorizeRoles(UserRole.ADMIN), updateHospital);
+router.delete('/:id', authorizeRoles(UserRole.ADMIN), deleteHospital);
 router.get('/idn/:idnId', getHospitalsByIDN)
 
 export default router;
