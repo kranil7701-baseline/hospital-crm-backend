@@ -135,6 +135,7 @@ export const getDeals = async (req: AuthRequest, res: Response): Promise<void> =
 
                 product: "$products.product",
                 dealAmount: "$products.dealAmount",
+                quantity: "$products.quantity",
                 stage: "$products.stage",
 
                 user: {
@@ -308,12 +309,12 @@ export const getDeals = async (
       // 🔥 PRODUCT FILTER
       ...(productIds.length > 0
         ? [
-            {
-              $match: {
-                "products.product": { $in: productIds },
-              },
+          {
+            $match: {
+              "products.product": { $in: productIds },
             },
-          ]
+          },
+        ]
         : []),
 
       // 🔥 ENRICH WITH HOSPITAL (Needed for search)
@@ -330,20 +331,20 @@ export const getDeals = async (
       // 🔥 SEARCH FILTER
       ...(searchQuery
         ? [
-            {
-              $match: {
-                $or: [
-                  { "products.stage": { $regex: searchQuery, $options: "i" } },
-                  {
-                    "hospital.hospitalName": {
-                      $regex: searchQuery,
-                      $options: "i",
-                    },
+          {
+            $match: {
+              $or: [
+                { "products.stage": { $regex: searchQuery, $options: "i" } },
+                {
+                  "hospital.hospitalName": {
+                    $regex: searchQuery,
+                    $options: "i",
                   },
-                ],
-              },
+                },
+              ],
             },
-          ]
+          },
+        ]
         : []),
 
       {
@@ -416,6 +417,7 @@ export const getDeals = async (
                 },
                 product: "$products.product",
                 dealAmount: "$products.dealAmount",
+                quantity: "$products.quantity",
                 stage: "$products.stage",
                 user: {
                   _id: "$user._id",
@@ -460,23 +462,23 @@ export const getDeals = async (
             // 🔥 USER FILTER (important)
             ...(userId && mongoose.Types.ObjectId.isValid(userId)
               ? [
-                  {
-                    $match: {
-                      user: new mongoose.Types.ObjectId(userId),
-                    },
+                {
+                  $match: {
+                    user: new mongoose.Types.ObjectId(userId),
                   },
-                ]
+                },
+              ]
               : []),
 
             // 🔥 GPO FILTER
             ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
-                  {
-                    $match: {
-                      gpo: new mongoose.Types.ObjectId(gpoId),
-                    },
+                {
+                  $match: {
+                    gpo: new mongoose.Types.ObjectId(gpoId),
                   },
-                ]
+                },
+              ]
               : []),
 
             { $unwind: "$products" },
@@ -504,8 +506,8 @@ export const getDeals = async (
               // if productIds are passed → only those products get real revenue
               productIds.length > 0
                 ? {
-                    $in: ["$_id", productIds],
-                  }
+                  $in: ["$_id", productIds],
+                }
                 : true,
 
               // true case → sum revenue
@@ -790,11 +792,8 @@ export const updateDeal = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const dealId = req.params.dealId || (req.query.dealId as string);
 
-    // console.log(dealId)
-
-    const { dealAmount, quantity, stage, expectedCloseDate, dealDate, product } =
+    const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product } =
       req.body;
 
     if (!dealId) {
@@ -965,6 +964,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                     _id: "$products._id",
                     product: "$products.product",
                     dealAmount: "$products.dealAmount",
+                    quantity: "$products.quantity",
                     stage: "$products.stage",
                     expectedCloseDate: "$products.expectedCloseDate",
                     dealDate: "$products.dealDate"
@@ -1002,6 +1002,7 @@ export const getDashboardStats = async (req: AuthRequest, res: Response): Promis
                     _id: "$products._id",
                     product: "$products.product",
                     dealAmount: "$products.dealAmount",
+                    quantity: "$products.quantity",
                     stage: "$products.stage",
                     expectedCloseDate: "$products.expectedCloseDate",
                     dealDate: "$products.dealDate"
@@ -1242,6 +1243,7 @@ export const getDashboardStats = async (
                     _id: "$products._id",
                     product: "$products.product",
                     dealAmount: "$products.dealAmount",
+                    quantity: "$products.quantity",
                     stage: "$products.stage",
                     expectedCloseDate: "$products.expectedCloseDate",
                     dealDate: "$products.dealDate",
@@ -1282,6 +1284,7 @@ export const getDashboardStats = async (
                     _id: "$products._id",
                     product: "$products.product",
                     dealAmount: "$products.dealAmount",
+                    quantity: "$products.quantity",
                     stage: "$products.stage",
                     expectedCloseDate: "$products.expectedCloseDate",
                     dealDate: "$products.dealDate",
