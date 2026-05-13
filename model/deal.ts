@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IDealProduct {
   product: mongoose.Types.ObjectId;
   dealAmount?: number;
+  quantity?: number;
   stage?: string;
   expectedCloseDate?: Date;
   dealDate?: Date;
@@ -43,6 +44,10 @@ const DealSchema: Schema = new Schema({
     {
       product: { type: Schema.Types.ObjectId, ref: "Product" },
       dealAmount: Number,
+      quantity: {
+        type: Number,
+        default: 1
+      },
       stage: {
         type: String,
         enum: [

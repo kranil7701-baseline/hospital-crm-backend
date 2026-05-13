@@ -567,6 +567,23 @@ export const createDeal = async (
       return;
     }
 
+    const hospitalId = rest.hospital;
+    const productIds = products.map((p: any) => p.product);
+
+    // Check if any of these product deals already exist for this hospital
+    const existingDeals = await Deal.find({
+      hospital: hospitalId,
+      "products.product": { $in: productIds },
+    });
+
+    if (existingDeals.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: "One or more of these products already have a deal for this hospital",
+      });
+      return;
+    }
+
     const dealsToInsert = products.map((product: any) => ({
       ...rest,
       user: req.user?._id,
@@ -705,6 +722,7 @@ export const addProductToDeal = async (
     const {
       product,
       dealAmount,
+      quantity,
       stage,
       expectedCloseDate,
       dealDate,
@@ -720,6 +738,20 @@ export const addProductToDeal = async (
       return;
     }
 
+    // Check if a deal with the same product already exists for this hospital
+    const existingDeal = await Deal.findOne({
+      hospital: hospitalId,
+      "products.product": product,
+    });
+
+    if (existingDeal) {
+      res.status(400).json({
+        success: false,
+        message: "A deal for this product already exists for this hospital",
+      });
+      return;
+    }
+
     const newDeal = new Deal({
       hospital: hospitalId,
       idn,
@@ -729,6 +761,7 @@ export const addProductToDeal = async (
         {
           product,
           dealAmount,
+          quantity,
           stage,
           expectedCloseDate,
           dealDate,
@@ -761,7 +794,7 @@ export const updateDeal = async (
 
     // console.log(dealId)
 
-    const { dealAmount, stage, expectedCloseDate, dealDate, product } =
+    const { dealAmount, quantity, stage, expectedCloseDate, dealDate, product } =
       req.body;
 
     if (!dealId) {
@@ -777,6 +810,8 @@ export const updateDeal = async (
     if (product) updateFields["products.0.product"] = product;
     if (dealAmount !== undefined)
       updateFields["products.0.dealAmount"] = dealAmount;
+    if (quantity !== undefined)
+      updateFields["products.0.quantity"] = quantity;
     if (stage) updateFields["products.0.stage"] = stage;
     if (expectedCloseDate)
       updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
