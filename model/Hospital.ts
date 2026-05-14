@@ -9,9 +9,9 @@ export interface IHospital extends Document {
   city: string;
   state: string;
   zip: string;
-  // competitiveProduct: string;
-  // teamHospital: boolean;
-  // magnetHospital: boolean;
+  competitiveProduct: string;
+  teamHospital: boolean;
+  magnetHospital: boolean;
   // products: string[];
   notes: string;
   contacts: mongoose.Types.ObjectId[];
@@ -67,18 +67,16 @@ const HospitalSchema: Schema = new Schema({
     required: true,
     trim: true
   },
-  // competitiveProduct: {
-  //   type: String,
-  //   trim: true
-  // },
-  // teamHospital: {
-  //   type: Boolean,
-  //   required: true
-  // },
-  // magnetHospital: {
-  //   type: Boolean,
-  //   required: true
-  // },
+  competitiveProduct: {
+    type: String,
+    trim: true
+  },
+  teamHospital: {
+    type: Boolean,
+  },
+  magnetHospital: {
+    type: Boolean,
+  },
   documents: [{
     type: String,
     trim: true
