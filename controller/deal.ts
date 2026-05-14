@@ -797,7 +797,6 @@ export const updateDeal = async (
   res: Response,
 ): Promise<void> => {
   try {
-
     const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product, userId, beds } =
       req.body;
 
@@ -805,6 +804,16 @@ export const updateDeal = async (
       res.status(400).json({
         success: false,
         message: "dealId is required",
+      });
+      return;
+    }
+
+    // 🔥 Find deal first as per instruction
+    const deal = await Deal.findById(dealId);
+    if (!deal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal not found",
       });
       return;
     }
@@ -820,26 +829,19 @@ export const updateDeal = async (
     if (expectedCloseDate)
       updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
     if (dealDate) updateFields["products.0.dealDate"] = dealDate;
-    if (beds !== undefined)
+
+    // Handle beds: update current deal's fields
+    if (beds !== undefined) {
       updateFields["products.0.beds"] = Number(beds);
+    }
 
     // Handle User assignment
     if (userId) {
-      const deal = await Deal.findById(dealId);
-      if (!deal) {
-        res.status(404).json({
-          success: false,
-          message: "Deal not found",
-        });
-        return;
-      }
-
       const isAdmin = req.user?.role === UserRole.ADMIN;
 
       if (isAdmin) {
         updateFields.user = userId;
       } else {
-        // If non-admin sends a different userId than the current one, it's a reassignment attempt
         if (deal.user.toString() !== userId) {
           res.status(403).json({
             success: false,
@@ -847,7 +849,6 @@ export const updateDeal = async (
           });
           return;
         }
-        // If they match, it's fine to include it in updateFields (or just ignore)
         updateFields.user = userId;
       }
     }
@@ -857,22 +858,6 @@ export const updateDeal = async (
       { $set: updateFields },
       { new: true, runValidators: true },
     );
-
-    if (!updatedDeal) {
-      res.status(404).json({
-        success: false,
-        message: "Deal not found",
-      });
-      return;
-    }
-
-    // Sync hospital beds count across all deals for this hospital
-    if (beds !== undefined && updatedDeal) {
-      await Deal.updateMany(
-        { hospital: updatedDeal.hospital },
-        { $set: { "products.0.beds": Number(beds) } },
-      );
-    }
 
     res.status(200).json({
       success: true,

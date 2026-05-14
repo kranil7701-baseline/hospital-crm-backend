@@ -158,11 +158,21 @@ export const getHospitalByHospitalId = async (
         select: "name",
       });
 
+    // Extract product names and their specific bed counts
+    const productInfo = deals.map((deal: any) => ({
+      productName: deal.products[0]?.product?.name || "N/A",
+      beds: deal.products[0]?.beds || 0,
+    }));
+
+    // Calculate total beds across all deals
+    const totalBeds = productInfo.reduce((sum, p) => sum + p.beds, 0);
+
     // 4. Final response
     const responseData = {
       ...hospital.toObject(),
-      beds: (deals as any)[0]?.products[0]?.beds || 0, // ✅ Extract from first deal
-      contacts, // ✅ manually attached
+      beds: totalBeds, // Total beds across all deals
+      productInfo,    // List of products and their beds
+      contacts,       // Manually attached contacts
       deals,
     };
 
