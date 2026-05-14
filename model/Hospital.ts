@@ -2,22 +2,23 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IHospital extends Document {
   idn: mongoose.Types.ObjectId;
+  user: mongoose.Types.ObjectId;
+  gpo: mongoose.Types.ObjectId;
   hospitalName: string;
   address: string;
-  user: mongoose.Types.ObjectId;
   city: string;
   state: string;
   zip: string;
-  gpo: mongoose.Types.ObjectId,
-  competitiveProduct: string;
-  teamHospital: boolean;
-  magnetHospital: boolean;
-  products: string[];
+  // competitiveProduct: string;
+  // teamHospital: boolean;
+  // magnetHospital: boolean;
+  // products: string[];
   notes: string;
   contacts: mongoose.Types.ObjectId[];
   documents: string[];
-  bedsWithMac: number;
-  ICUBeds: number;
+  // bedsWithMac: number;
+  // ICUBeds: number;
+  beds: number;
   location: string;
   createdAt: Date;
   updatedAt: Date;
@@ -32,7 +33,6 @@ const HospitalSchema: Schema = new Schema({
   gpo: {
     type: Schema.Types.ObjectId,
     ref: 'GPO',
-    required: true
   },
   contacts: [{
     type: Schema.Types.ObjectId,
@@ -68,26 +68,29 @@ const HospitalSchema: Schema = new Schema({
     required: true,
     trim: true
   },
-  competitiveProduct: {
-    type: String,
-    trim: true
-  },
-  teamHospital: {
-    type: Boolean,
-    required: true
-  },
-  magnetHospital: {
-    type: Boolean,
-    required: true
-  },
+  // competitiveProduct: {
+  //   type: String,
+  //   trim: true
+  // },
+  // teamHospital: {
+  //   type: Boolean,
+  //   required: true
+  // },
+  // magnetHospital: {
+  //   type: Boolean,
+  //   required: true
+  // },
   documents: [{
     type: String,
     trim: true
   }],
-  bedsWithMac: {
-    type: Number,
-  },
-  ICUBeds: {
+  // bedsWithMac: {
+  //   type: Number,
+  // },
+  // ICUBeds: {
+  //   type: Number,
+  // },
+  beds: {
     type: Number,
   },
   location: {

@@ -560,7 +560,7 @@ export const createDeal = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { products, ...rest } = req.body;
+    const { products, beds, ...rest } = req.body;
 
     if (!products || !products.length) {
       res.status(400).json({
@@ -585,6 +585,11 @@ export const createDeal = async (
         message: "One or more of these products already have a deal for this hospital",
       });
       return;
+    }
+
+    // Update hospital beds if provided
+    if (beds) {
+      await Hospital.findByIdAndUpdate(hospitalId, { beds: Number(beds) });
     }
 
     const dealsToInsert = products.map((product: any) => ({
