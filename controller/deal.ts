@@ -820,7 +820,23 @@ export const updateDeal = async (
 
     const updateFields: any = {};
 
-    if (product) updateFields["products.0.product"] = product;
+    if (product) {
+      // 🔥 Validation: Check if another deal for the same hospital already has this product
+      const existingDeal = await Deal.findOne({
+        _id: { $ne: dealId },
+        hospital: deal.hospital,
+        "products.product": product,
+      });
+
+      if (existingDeal) {
+        res.status(400).json({
+          success: false,
+          message: "A deal for this product already exists for this hospital",
+        });
+        return;
+      }
+      updateFields["products.0.product"] = product;
+    }
     if (dealAmount !== undefined)
       updateFields["products.0.dealAmount"] = dealAmount;
     if (quantity !== undefined)
