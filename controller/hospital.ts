@@ -161,6 +161,7 @@ export const getHospitalByHospitalId = async (
     // 4. Final response
     const responseData = {
       ...hospital.toObject(),
+      beds: (deals as any)[0]?.products[0]?.beds || 0, // ✅ Extract from first deal
       contacts, // ✅ manually attached
       deals,
     };
@@ -1486,6 +1487,18 @@ export const getAllHospitalsDeals = async (
     // ================= SORT =================
     pipeline.push({
       $sort: { minExpectedCloseDate: 1 },
+    });
+
+    // ================= EXTRACT BEDS FROM LATEST DEAL =================
+    pipeline.push({
+      $addFields: {
+        beds: {
+          $ifNull: [
+            { $arrayElemAt: [{ $arrayElemAt: ["$deals.products.beds", 0] }, 0] },
+            0,
+          ],
+        },
+      },
     });
 
     // ================= PROJECT =================

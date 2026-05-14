@@ -18,7 +18,6 @@ export interface IHospital extends Document {
   documents: string[];
   // bedsWithMac: number;
   // ICUBeds: number;
-  beds: number;
   location: string;
   createdAt: Date;
   updatedAt: Date;
@@ -90,9 +89,6 @@ const HospitalSchema: Schema = new Schema({
   // ICUBeds: {
   //   type: Number,
   // },
-  beds: {
-    type: Number,
-  },
   location: {
     type: String,
     trim: true

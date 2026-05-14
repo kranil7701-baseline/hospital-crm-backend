@@ -407,7 +407,6 @@ export const getDeals = async (
                   city: "$hospital.city",
                   state: "$hospital.state",
                   zip: "$hospital.zip",
-                  beds: "$hospital.beds",
                   idn: {
                     _id: "$idn._id",
                     name: "$idn.name",
@@ -420,6 +419,7 @@ export const getDeals = async (
                 product: "$products.product",
                 dealAmount: "$products.dealAmount",
                 quantity: "$products.quantity",
+                beds: "$products.beds",
                 stage: "$products.stage",
                 user: {
                   _id: "$user._id",
@@ -591,15 +591,10 @@ export const createDeal = async (
       return;
     }
 
-    // Update hospital beds if provided
-    if (beds) {
-      await Hospital.findByIdAndUpdate(hospitalId, { beds: Number(beds) });
-    }
-
     const dealsToInsert = products.map((product: any) => ({
       ...rest,
       user: req.user?._id,
-      products: [product], // only ONE product per document
+      products: [{ ...product, beds: beds ? Number(beds) : 0 }], // only ONE product per document
     }));
 
     const createdDeals = await Deal.insertMany(dealsToInsert);
@@ -825,6 +820,8 @@ export const updateDeal = async (
     if (expectedCloseDate)
       updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
     if (dealDate) updateFields["products.0.dealDate"] = dealDate;
+    if (beds !== undefined)
+      updateFields["products.0.beds"] = Number(beds);
 
     // Handle User assignment
     if (userId) {
@@ -869,9 +866,12 @@ export const updateDeal = async (
       return;
     }
 
-    // Update hospital beds if provided
-    if (beds !== undefined) {
-      await Hospital.findByIdAndUpdate(updatedDeal.hospital, { beds: Number(beds) });
+    // Sync hospital beds count across all deals for this hospital
+    if (beds !== undefined && updatedDeal) {
+      await Deal.updateMany(
+        { hospital: updatedDeal.hospital },
+        { $set: { "products.0.beds": Number(beds) } },
+      );
     }
 
     res.status(200).json({

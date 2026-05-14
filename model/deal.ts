@@ -4,6 +4,7 @@ export interface IDealProduct {
   product: mongoose.Types.ObjectId;
   dealAmount?: number;
   quantity?: number;
+  beds: number;
   stage?: string;
   expectedCloseDate?: Date;
   dealDate?: Date;
@@ -47,6 +48,10 @@ const DealSchema: Schema = new Schema({
       quantity: {
         type: Number,
         default: 1
+      },
+      beds: {
+        type: Number,
+        default: 0
       },
       stage: {
         type: String,
