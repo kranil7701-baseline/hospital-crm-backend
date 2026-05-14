@@ -265,8 +265,8 @@ export const getDeals = async (
     const productIdsRaw = req.query.productIds as string | string[];
     const gpoId = req.query.gpoId as string;
     const page = req.query.page ? parseInt(req.query.page as string) : null;
-    const limit = 15;
-    const skip = page ? (page - 1) * limit : 0;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : (page ? 15 : null);
+    const skip = page ? (page - 1) * (limit || 15) : 0;
 
     let productIds: mongoose.Types.ObjectId[] = [];
     if (productIdsRaw) {
@@ -429,7 +429,10 @@ export const getDeals = async (
               },
             },
             { $sort: { createdAt: -1 } },
-            ...(page ? [{ $skip: skip }, { $limit: limit }] : []),
+            ...(page || limit ? [
+              { $skip: skip },
+              ...(limit ? [{ $limit: limit }] : [])
+            ] : []),
           ],
 
           totalDealsCount: [{ $count: "count" }],
@@ -539,8 +542,8 @@ export const getDeals = async (
       success: true,
       totalDeals: totalDealsCount,
       page: page || 1,
-      limit: page ? limit : totalDealsCount,
-      totalPages: page ? Math.ceil(totalDealsCount / limit) : 1,
+      limit: limit || totalDealsCount,
+      totalPages: limit ? Math.ceil(totalDealsCount / limit) : 1,
       totalHospitals,
       closedBusiness,
       productRevenue,
