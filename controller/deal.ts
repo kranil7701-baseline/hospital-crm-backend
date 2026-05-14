@@ -407,6 +407,7 @@ export const getDeals = async (
                   city: "$hospital.city",
                   state: "$hospital.state",
                   zip: "$hospital.zip",
+                  beds: "$hospital.beds",
                   idn: {
                     _id: "$idn._id",
                     name: "$idn.name",

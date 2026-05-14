@@ -1242,12 +1242,12 @@ export const getAllHospitalsDeals = async (
 
           ...(productStage
             ? [
-                {
-                  $match: {
-                    "products.stage": productStage,
-                  },
+              {
+                $match: {
+                  "products.stage": productStage,
                 },
-              ]
+              },
+            ]
             : []),
 
           {
@@ -1495,6 +1495,7 @@ export const getAllHospitalsDeals = async (
         city: 1,
         state: 1,
         zip: 1,
+        beds: 1,
         idn: 1,
         gpo: 1,
         deals: 1,
