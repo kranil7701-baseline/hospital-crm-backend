@@ -802,7 +802,7 @@ export const updateDeal = async (
 ): Promise<void> => {
   try {
 
-    const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product, userId } =
+    const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product, userId, beds } =
       req.body;
 
     if (!dealId) {
@@ -866,6 +866,11 @@ export const updateDeal = async (
         message: "Deal not found",
       });
       return;
+    }
+
+    // Update hospital beds if provided
+    if (beds !== undefined) {
+      await Hospital.findByIdAndUpdate(updatedDeal.hospital, { beds: Number(beds) });
     }
 
     res.status(200).json({
