@@ -960,23 +960,6 @@ export const getDashboardStats = async (
                   $sum: "$products.dealAmount",
                 },
 
-                implementedAmount: {
-                  $sum: {
-                    $cond: [
-                      { $eq: ["$products.stage", "Implemented"] },
-                      "$products.dealAmount",
-                      0,
-                    ],
-                  },
-                },
-
-                // ================= COUNTS =================
-                implementedProductsCount: {
-                  $sum: {
-                    $cond: [{ $eq: ["$products.stage", "Implemented"] }, 1, 0],
-                  },
-                },
-
                 // ================= ACTIVE DEALS =================
                 activeDealsCount: {
                   $sum: {
@@ -1014,47 +997,6 @@ export const getDashboardStats = async (
               },
             },
           ],
-
-          // ================= IMPLEMENTED =================
-          implemented: [
-            { $match: { "products.stage": "Implemented" } },
-
-            {
-              $group: {
-                _id: "$hospital",
-                products: {
-                  $push: {
-                    _id: "$products._id",
-                    product: "$products.product",
-                    dealAmount: "$products.dealAmount",
-                    quantity: "$products.quantity",
-                    stage: "$products.stage",
-                    expectedCloseDate: "$products.expectedCloseDate",
-                    dealDate: "$products.dealDate",
-                  },
-                },
-              },
-            },
-
-            {
-              $lookup: {
-                from: "hospitals",
-                localField: "_id",
-                foreignField: "_id",
-                as: "hospital",
-              },
-            },
-
-            { $unwind: "$hospital" },
-
-            {
-              $project: {
-                _id: "$hospital._id",
-                hospitalName: "$hospital.hospitalName",
-                products: 1,
-              },
-            },
-          ],
         },
       },
     ]);
@@ -1088,12 +1030,6 @@ export const getDashboardStats = async (
         activeDeals: data?.totals?.[0]?.activeDealsCount || 0,
 
         totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
-
-        implemented: {
-          amount: data?.totals?.[0]?.implementedAmount || 0,
-          productsCount: data?.totals?.[0]?.implementedProductsCount || 0,
-          hospitals: data?.implemented || [],
-        },
 
         pipeline,
 
@@ -1248,6 +1184,128 @@ export const getClosedWonDeals = async (
     res.status(500).json({
       success: false,
       message: "Failed to fetch closed won deals",
+      error: error.message,
+    });
+  }
+};
+
+export const getImplementedDeals = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const skip = (page - 1) * limit;
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    const pipeline: any[] = [
+      { $match: { user: objectUserId } },
+      { $unwind: "$products" },
+      { $match: { "products.stage": "Implemented" } },
+
+      // Group by hospital
+      {
+        $group: {
+          _id: "$hospital",
+          products: {
+            $push: {
+              _id: "$products._id",
+              product: "$products.product",
+              dealAmount: "$products.dealAmount",
+              quantity: "$products.quantity",
+              stage: "$products.stage",
+              expectedCloseDate: "$products.expectedCloseDate",
+              dealDate: "$products.dealDate",
+            },
+          },
+          totalAmount: { $sum: "$products.dealAmount" },
+          productsCount: { $sum: 1 },
+        },
+      },
+
+      // Lookup hospital details
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "_id",
+          foreignField: "_id",
+          as: "hospital",
+        },
+      },
+      { $unwind: "$hospital" },
+
+      // Search by hospital name
+      ...(search
+        ? [
+            {
+              $match: {
+                "hospital.hospitalName": { $regex: search, $options: "i" },
+              },
+            },
+          ]
+        : []),
+
+      {
+        $project: {
+          _id: "$hospital._id",
+          hospitalName: "$hospital.hospitalName",
+          products: 1,
+          totalAmount: 1,
+          productsCount: 1,
+        },
+      },
+
+      { $sort: { hospitalName: 1 } },
+
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: "count" }],
+          overallStats: [
+            {
+              $group: {
+                _id: null,
+                totalAmount: { $sum: "$totalAmount" },
+                totalProducts: { $sum: "$productsCount" },
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = await Deal.aggregate(pipeline);
+    const data = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.count || 0;
+    const overall = result[0]?.overallStats[0] || {
+      totalAmount: 0,
+      totalProducts: 0,
+    };
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalHospitals: total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: total > skip + data.length,
+      amount: overall.totalAmount,
+      productsCount: overall.totalProducts,
+      data: data,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch implemented deals",
       error: error.message,
     });
   }
