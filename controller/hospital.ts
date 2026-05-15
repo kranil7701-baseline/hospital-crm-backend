@@ -16,46 +16,89 @@ export const getHospitals = async (
     const page = parseInt(req.query.page as string) || 1;
     const search = (req.query.search as string) || "";
     const idn = req.query.idn as string;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
 
-    // Handle limit properly
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : null;
-    const skip = limit ? (page - 1) * limit : 0;
-
-    // Build search query
-    let searchQuery: any = {};
+    // Build match stage
+    const matchStage: any = {};
 
     if (search) {
-      searchQuery.$or = [
+      matchStage.$or = [
         { hospitalName: { $regex: search, $options: "i" } },
         { city: { $regex: search, $options: "i" } },
       ];
     }
 
-    if (idn) {
-      searchQuery.idn = idn;
+    if (idn && mongoose.Types.ObjectId.isValid(idn)) {
+      matchStage.idn = new mongoose.Types.ObjectId(idn);
     }
 
-    // Base query
-    let query = Hospital.find(searchQuery)
-      .select("hospitalName gpo idn")
-      .sort({ createdAt: -1 })
-      .populate({ path: "gpo", select: "name" })
-      .populate({ path: "idn", select: "name" });
+    const pipeline: any[] = [
+      { $match: matchStage },
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: "idns",
+          localField: "idn",
+          foreignField: "_id",
+          as: "idn",
+        },
+      },
+      { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "gpos",
+          localField: "gpo",
+          foreignField: "_id",
+          as: "gpo",
+        },
+      },
+      { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "contacts",
+          localField: "_id",
+          foreignField: "hospital",
+          as: "contacts",
+        },
+      },
+      {
+        $project: {
+          hospitalName: 1,
+          city: 1,
+          idn: { _id: 1, name: 1 },
+          gpo: { _id: 1, name: 1 },
+          contacts: {
+            _id: 1,
+            firstName: 1,
+            lastName: 1,
+            email: 1,
+            phoneNumber: 1,
+            designation: 1,
+            isPrimary: 1,
+          },
+          createdAt: 1,
+        },
+      },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: "total" }],
+        },
+      },
+    ];
 
-    // Apply pagination ONLY if limit exists
-    if (limit) {
-      query = query.skip(skip).limit(limit);
-    }
-
-    const hospitals = await query;
-    const total = await Hospital.countDocuments(searchQuery);
+    const result = await Hospital.aggregate(pipeline);
+    const hospitals = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.total || 0;
 
     res.status(200).json({
       success: true,
-      page: limit ? page : 1, // reset page if no limit
-      limit: limit || total, // show total if no limit
+      page,
+      limit,
       totalHospitals: total,
-      totalPages: limit ? Math.ceil(total / limit) : 1, // avoid division by null
+      totalPages: Math.ceil(total / limit),
+      hasMore: total > skip + hospitals.length,
       data: hospitals,
     });
   } catch (error: any) {
