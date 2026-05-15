@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDeals, createDeal, updateDealProductStage, removeDeal, addProductToDeal, updateDeal, getDashboardStats } from '../controller/deal.ts';
+import { getDeals, createDeal, updateDealProductStage, removeDeal, addProductToDeal, updateDeal, getDashboardStats, getClosedWonDeals } from '../controller/deal.ts';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.ts';
 
 const router = express.Router();
@@ -20,5 +20,6 @@ router.put("/update", updateDeal);
 
 
 router.get("/stats/get-dashboard-stats", getDashboardStats);
+router.get("/stats/closed-won", getClosedWonDeals);
 
 export default router;
