@@ -997,6 +997,29 @@ export const getDashboardStats = async (
               },
             },
           ],
+
+          // ================= CLOSED BUSINESS =================
+          closedBusinessRaw: [
+            {
+              $match: {
+                "products.stage": { $in: ["Closed Won", "Implemented"] },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalAmount: { $sum: "$products.dealAmount" },
+                hospitals: { $addToSet: "$hospital" },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                totalAmount: 1,
+                hospitalCount: { $size: "$hospitals" },
+              },
+            },
+          ],
         },
       },
     ]);
@@ -1030,6 +1053,11 @@ export const getDashboardStats = async (
         activeDeals: data?.totals?.[0]?.activeDealsCount || 0,
 
         totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
+
+        closedBusiness: {
+          totalAmount: data?.closedBusinessRaw?.[0]?.totalAmount || 0,
+          hospitalCount: data?.closedBusinessRaw?.[0]?.hospitalCount || 0,
+        },
 
         pipeline,
 
@@ -1270,12 +1298,12 @@ export const getImplementedDeals = async (
       // Search by hospital name
       ...(search
         ? [
-            {
-              $match: {
-                "hospital.hospitalName": { $regex: search, $options: "i" },
-              },
+          {
+            $match: {
+              "hospital.hospitalName": { $regex: search, $options: "i" },
             },
-          ]
+          },
+        ]
         : []),
 
       {
