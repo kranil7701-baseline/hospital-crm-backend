@@ -444,7 +444,11 @@ export const getDeals = async (
           ],
 
           closedBusiness: [
-            { $match: { "products.stage": "Closed Won" } },
+            {
+              $match: {
+                "products.stage": { $in: ["Closed Won", "Implemented"] },
+              },
+            },
             { $count: "count" },
           ],
         },
