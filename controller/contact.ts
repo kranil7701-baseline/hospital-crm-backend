@@ -70,7 +70,7 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
       },
       { $unwind: { path: "$hospital.gpo", preserveNullAndEmptyArrays: true } },
       { $match: matchStage },
-      { $sort: { createdAt: -1 } },
+      { $sort: { firstName: 1, lastName: 1 } },
       {
         $facet: {
           data: [
