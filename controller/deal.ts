@@ -1090,6 +1090,18 @@ export const getClosedWonDeals = async (
       { $unwind: "$products" },
       { $match: { "products.stage": "Closed Won" } },
 
+      // lookup product details
+      {
+        $lookup: {
+          from: "products",
+          localField: "products.product",
+          foreignField: "_id",
+          pipeline: [{ $project: { _id: 1, name: 1 } }],
+          as: "products.productDetail",
+        },
+      },
+      { $unwind: "$products.productDetail" },
+
       // Group by hospital
       {
         $group: {
@@ -1097,7 +1109,7 @@ export const getClosedWonDeals = async (
           products: {
             $push: {
               _id: "$products._id",
-              product: "$products.product",
+              product: "$products.productDetail",
               dealAmount: "$products.dealAmount",
               quantity: "$products.quantity",
               stage: "$products.stage",
@@ -1212,6 +1224,18 @@ export const getImplementedDeals = async (
       { $unwind: "$products" },
       { $match: { "products.stage": "Implemented" } },
 
+      // lookup product details
+      {
+        $lookup: {
+          from: "products",
+          localField: "products.product",
+          foreignField: "_id",
+          pipeline: [{ $project: { _id: 1, name: 1 } }],
+          as: "products.productDetail",
+        },
+      },
+      { $unwind: "$products.productDetail" },
+
       // Group by hospital
       {
         $group: {
@@ -1219,7 +1243,7 @@ export const getImplementedDeals = async (
           products: {
             $push: {
               _id: "$products._id",
-              product: "$products.product",
+              product: "$products.productDetail",
               dealAmount: "$products.dealAmount",
               quantity: "$products.quantity",
               stage: "$products.stage",
