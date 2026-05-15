@@ -10,12 +10,17 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || "";
     const userId = req.query.userId as string;
+    const productId = req.query.productId as string;
 
     const skip = (page - 1) * limit;
     const matchStage: any = {};
 
-    if (userId) {
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       matchStage.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      matchStage["hospitalDeals.products.product"] = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -40,6 +45,14 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
       { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
+          from: "deals",
+          localField: "hospital._id",
+          foreignField: "hospital",
+          as: "hospitalDeals"
+        }
+      },
+      {
+        $lookup: {
           from: "idns",
           localField: "hospital.idn",
           foreignField: "_id",
@@ -47,8 +60,6 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
         }
       },
       { $unwind: { path: "$hospital.idn", preserveNullAndEmptyArrays: true } },
-
-      // 🔗 Join GPO (ONLY for populate, not search)
       {
         $lookup: {
           from: "gpos",
@@ -83,6 +94,7 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
       limit,
       totalContacts: total,
       totalPages: Math.ceil(total / limit),
+      hasMore: total > skip + contacts.length,
       data: contacts
     });
 
