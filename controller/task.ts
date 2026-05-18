@@ -4,6 +4,93 @@ import Task from '../model/Task.ts';
 import mongoose from "mongoose";
 
 
+export const getDashboardTasks = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const skip = (page - 1) * limit;
+    const matchStage: any = {
+      user: new mongoose.Types.ObjectId(userId)
+    };
+
+    // Last 7 days tasks
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    matchStage.createdAt = { $gte: sevenDaysAgo };
+
+    if (search) {
+      matchStage.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    const pipeline: any[] = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "hospitals",
+          let: { hospitalId: "$hospital" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$hospitalId"] }
+              }
+            },
+            {
+              $project: {
+                _id: 1,
+                hospitalName: 1
+              }
+            }
+          ],
+          as: "hospital"
+        }
+      },
+      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+          totalCount: [
+            { $count: "total" }
+          ]
+        }
+      }
+    ];
+
+    const result = await Task.aggregate(pipeline);
+    const tasks = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalTasks: total,
+      totalPages: Math.ceil(total / limit),
+      data: tasks
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve dashboard tasks",
+      error: error.message
+    });
+  }
+};
+
 export const getTasks = async (req: Request, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;

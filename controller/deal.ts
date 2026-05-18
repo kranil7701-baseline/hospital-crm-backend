@@ -921,18 +921,6 @@ export const getDashboardStats = async (
       ]);
 
     // =========================
-    // 🔥 TASKS + ACTIVITY
-    // =========================
-    const [tasks, notes, callLogs] = await Promise.all([
-      Task.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
-      Notes.find({ user: objectUserId }).sort({ createdAt: -1 }).limit(5),
-      CallLog.find({ user: objectUserId })
-        .populate("contact", "firstName lastName") // 🔥 POPULATED CONTACT
-        .sort({ createdAt: -1 })
-        .limit(5),
-    ]);
-
-    // =========================
     // 🔥 STAGES MASTER
     // =========================
     const stages = [
@@ -1064,30 +1052,6 @@ export const getDashboardStats = async (
         },
 
         pipeline,
-
-        tasks: tasks || [],
-
-        // =========================
-        // 🔥 RECENT ACTIVITY (MERGED)
-        // =========================
-        recentActivity: [
-          ...(notes || []).map((n) => ({
-            type: "note",
-            data: n,
-            createdAt: n.createdAt,
-          })),
-
-          ...(callLogs || []).map((c) => ({
-            type: "callLog",
-            data: c,
-            createdAt: c.createdAt,
-          })),
-        ]
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )
-          .slice(0, 5),
       },
     });
   } catch (error: any) {

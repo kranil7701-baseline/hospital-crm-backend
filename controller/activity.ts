@@ -11,6 +11,71 @@ import { sendGraphEmail } from "../helper/graphEmail.ts";
 
 dotenv.config();
 
+export const getDashboardActivity = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    const pipeline: any[] = [
+      { $match: { user: objectUserId } },
+      { $addFields: { activityType: "note" } },
+      {
+        $unionWith: {
+          coll: "calllogs",
+          pipeline: [
+            { $match: { user: objectUserId } },
+            { $addFields: { activityType: "callLog" } },
+          ],
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "hospital",
+          foreignField: "_id",
+          pipeline: [{ $project: { hospitalName: 1 } }],
+          as: "hospital",
+        },
+      },
+      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "contacts",
+          localField: "contact",
+          foreignField: "_id",
+          pipeline: [{ $project: { firstName: 1, lastName: 1 } }],
+          as: "contact",
+        },
+      },
+      { $unwind: { path: "$contact", preserveNullAndEmptyArrays: true } },
+    ];
+
+    const combinedActivities = await Notes.aggregate(pipeline);
+
+    res.status(200).json({
+      success: true,
+      data: combinedActivities,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard activities",
+      error: error.message,
+    });
+  }
+};
+
 export const getActivities = async (
   req: Request,
   res: Response,
