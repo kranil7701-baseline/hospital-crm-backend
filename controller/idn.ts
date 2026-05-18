@@ -157,7 +157,7 @@ export const updateIDN = async (req: Request, res: Response): Promise<void> => {
 };
 
 
-export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void> => {
+export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -171,6 +171,329 @@ export const getAllIDNsDeals = async (req: Request, res: Response): Promise<void
       userId && mongoose.Types.ObjectId.isValid(userId)
         ? new mongoose.Types.ObjectId(userId)
         : null;
+
+    const matchStage: any = {};
+    if (search) {
+      matchStage.name = { $regex: search, $options: "i" };
+    }
+
+    const pipeline: any[] = [
+      { $match: matchStage },
+
+      // 🔥 STEP 1: Hospitals lookup (dynamic based on user)
+      {
+        $lookup: {
+          from: "hospitals",
+          let: { idnId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: userObjectId
+                  ? {
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] }
+                    ]
+                  }
+                  : {
+                    $eq: ["$idn", "$$idnId"]
+                  }
+              }
+            },
+            {
+              $lookup: {
+                from: "gpos",
+                localField: "gpo",
+                foreignField: "_id",
+                as: "gpo"
+              }
+            },
+            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } }
+          ],
+          as: "hospitals"
+        }
+      },
+
+      // 🔥 STEP 2: Remove empty IDNs ONLY if userId exists
+      ...(userObjectId
+        ? [
+          {
+            $match: {
+              "hospitals.0": { $exists: true }
+            }
+          }
+        ]
+        : []),
+
+      // 🔥 STEP 3: Extract hospitalIds
+      {
+        $addFields: {
+          hospitalIds: "$hospitals._id"
+        }
+      },
+
+      // 🔥 STEP 4: Deals lookup
+      {
+        $lookup: {
+          from: "deals",
+          let: { hospitalIds: "$hospitalIds" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $in: ["$hospital", "$$hospitalIds"]
+                }
+              }
+            },
+            { $unwind: "$products" },
+            {
+              $lookup: {
+                from: "products",
+                localField: "products.product",
+                foreignField: "_id",
+                as: "product"
+              }
+            },
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } }
+          ],
+          as: "deals"
+        }
+      },
+
+      // 🔥 STEP 5: Hospital-level aggregation
+      {
+        $addFields: {
+          hospitals: {
+            $map: {
+              input: "$hospitals",
+              as: "h",
+              in: {
+                _id: "$$h._id",
+                hospitalName: "$$h.hospitalName",
+                gpo: "$$h.gpo",
+                city: "$$h.city",
+                state: "$$h.state",
+                zip: "$$h.zip",
+
+                totalExpectedARR: {
+                  $sum: {
+                    $map: {
+                      input: {
+                        $filter: {
+                          input: "$deals",
+                          as: "d",
+                          cond: { $eq: ["$$d.hospital", "$$h._id"] }
+                        }
+                      },
+                      as: "d",
+                      in: { $ifNull: ["$$d.products.dealAmount", 0] }
+                    }
+                  }
+                },
+
+                expectedARRByProduct: {
+                  $map: {
+                    input: {
+                      $setUnion: [
+                        {
+                          $map: {
+                            input: {
+                              $filter: {
+                                input: "$deals",
+                                as: "d",
+                                cond: { $eq: ["$$d.hospital", "$$h._id"] }
+                              }
+                            },
+                            as: "d",
+                            in: "$$d.product.name"
+                          }
+                        }
+                      ]
+                    },
+                    as: "productName",
+                    in: {
+                      name: "$$productName",
+                      amount: {
+                        $sum: {
+                          $map: {
+                            input: {
+                              $filter: {
+                                input: "$deals",
+                                as: "d",
+                                cond: {
+                                  $and: [
+                                    { $eq: ["$$d.hospital", "$$h._id"] },
+                                    { $eq: ["$$d.product.name", "$$productName"] }
+                                  ]
+                                }
+                              }
+                            },
+                            as: "d",
+                            in: { $ifNull: ["$$d.products.dealAmount", 0] }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      // 🔥 STEP 6: IDN total ARR
+      {
+        $addFields: {
+          idnTotalExpectedARR: {
+            $sum: "$deals.products.dealAmount"
+          }
+        }
+      },
+
+      // 🔥 STEP 7: IDN product grouping
+      {
+        $addFields: {
+          idnARRByProduct: {
+            $map: {
+              input: {
+                $setUnion: [
+                  {
+                    $map: {
+                      input: "$deals",
+                      as: "d",
+                      in: "$$d.product.name"
+                    }
+                  }
+                ]
+              },
+              as: "productName",
+              in: {
+                name: "$$productName",
+                amount: {
+                  $sum: {
+                    $map: {
+                      input: "$deals",
+                      as: "d",
+                      in: {
+                        $cond: [
+                          { $eq: ["$$d.product.name", "$$productName"] },
+                          { $ifNull: ["$$d.products.dealAmount", 0] },
+                          0
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      // 🔥 STEP 8: Total hospitals
+      {
+        $addFields: {
+          totalHospitals: { $size: "$hospitals" }
+        }
+      },
+
+      {
+        $project: {
+          deals: 0,
+          hospitalIds: 0
+        }
+      },
+
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const idns = await IDN.aggregate(pipeline);
+
+    // ✅ Pagination count
+    const totalPipeline: any[] = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "hospitals",
+          let: { idnId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: userObjectId
+                  ? {
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] }
+                    ]
+                  }
+                  : {
+                    $eq: ["$idn", "$$idnId"]
+                  }
+              }
+            }
+          ],
+          as: "hospitals"
+        }
+      },
+      ...(userObjectId
+        ? [
+          {
+            $match: {
+              "hospitals.0": { $exists: true }
+            }
+          }
+        ]
+        : []),
+      { $count: "total" }
+    ];
+
+    const totalResult = await IDN.aggregate(totalPipeline);
+    const total = totalResult[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      data: idns,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve IDNs and deals data",
+      error: error.message
+    });
+  }
+};
+
+export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const reqUserId = req.query.userId as string;
+
+    const skip = (page - 1) * limit;
+
+    let userObjectId: mongoose.Types.ObjectId | null = null;
+    const isAdmin = req.user?.role === "Admin";
+
+    if (isAdmin) {
+      if (reqUserId && mongoose.Types.ObjectId.isValid(reqUserId)) {
+        userObjectId = new mongoose.Types.ObjectId(reqUserId);
+      }
+    } else {
+      if (req.user?._id) {
+        userObjectId = new mongoose.Types.ObjectId(req.user._id as unknown as string);
+      }
+    }
 
     const matchStage: any = {};
     if (search) {
