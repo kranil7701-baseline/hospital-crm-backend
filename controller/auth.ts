@@ -6,7 +6,7 @@ import { getCookieOptions } from "../helper/cookie.ts";
 
 const generateToken = (id: string): string => {
   return jwt.sign({ id }, process.env.JWT_SECRET!, {
-    expiresIn: "30d",
+    expiresIn: "1d",
   });
 };
 
@@ -88,7 +88,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       const cookieOptions = getCookieOptions();
       console.log(`Setting login cookie for ${email}. Options:`, {
         ...cookieOptions,
-        maxAge: "7d",
+        maxAge: "1d",
       });
       res.cookie("token", token, cookieOptions);
 
