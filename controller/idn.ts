@@ -1,10 +1,35 @@
-import type { Request, Response } from 'express';
-import type { AuthRequest } from '../middleware/authMiddleware.ts';
-import IDN from '../model/Idn.ts';
-import Deal from '../model/deal.ts';
-import Hospital from '../model/Hospital.ts';
-import Product from '../model/Product.ts';
+import type { Request, Response } from "express";
+import type { AuthRequest } from "../middleware/authMiddleware.ts";
+import IDN from "../model/Idn.ts";
+import Deal from "../model/deal.ts";
+import Hospital from "../model/Hospital.ts";
+import Product from "../model/Product.ts";
 import mongoose from "mongoose";
+
+export const GetIDNNameIDS = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const idns = await IDN.find({}, "_id name");
+
+    const formattedIDNs = idns.reduce(
+      (acc: Record<string, string>, idn: any) => {
+        acc[idn.name] = idn._id.toString();
+        return acc;
+      },
+      {},
+    );
+
+    res.status(200).json(formattedIDNs);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch IDNs",
+      error,
+    });
+  }
+};
 
 export const getIDNs = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -18,17 +43,16 @@ export const getIDNs = async (req: Request, res: Response): Promise<void> => {
     // Search query (adjust fields based on your schema)
     const searchQuery = search
       ? {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-        ]
-      }
+          $or: [{ name: { $regex: search, $options: "i" } }],
+        }
       : {};
 
     // Fetch IDNs
     const idns = await IDN.find(searchQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit).populate('hospitals');
+      .limit(limit)
+      .populate("hospitals");
 
     const total = await IDN.countDocuments(searchQuery);
 
@@ -38,53 +62,59 @@ export const getIDNs = async (req: Request, res: Response): Promise<void> => {
       limit,
       totalIDNs: total,
       totalPages: Math.ceil(total / limit),
-      data: idns
+      data: idns,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve IDNs",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-export const getIDNById = async (req: Request, res: Response): Promise<void> => {
+export const getIDNById = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
-    if (typeof id !== 'string') {
-      res.status(400).json({ success: false, message: 'Invalid ID' });
+    if (typeof id !== "string") {
+      res.status(400).json({ success: false, message: "Invalid ID" });
       return;
     }
 
-    const idn = await IDN.findById(id).populate('hospitals');
+    const idn = await IDN.findById(id).populate("hospitals");
 
     if (!idn) {
       res.status(404).json({
         success: false,
-        message: 'IDN not found'
+        message: "IDN not found",
       });
       return;
     }
 
     res.status(200).json({
       success: true,
-      data: idn
+      data: idn,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Error fetching IDN',
-      error: error.message
+      message: "Error fetching IDN",
+      error: error.message,
     });
   }
 };
 
-export const createIDN = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createIDN = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const idnData = {
       ...req.body,
-      user: req.user?._id
+      user: req.user?._id,
     };
 
     const idn = new IDN(idnData);
@@ -92,13 +122,13 @@ export const createIDN = async (req: AuthRequest, res: Response): Promise<void> 
 
     res.status(201).json({
       success: true,
-      data: idn
+      data: idn,
     });
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: 'Failed to create IDN',
-      error: error.message
+      message: "Failed to create IDN",
+      error: error.message,
     });
   }
 };
@@ -106,58 +136,65 @@ export const createIDN = async (req: AuthRequest, res: Response): Promise<void> 
 export const deleteIDN = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    if (typeof id !== 'string') {
-      res.status(400).json({ success: false, message: 'Invalid ID' });
+    if (typeof id !== "string") {
+      res.status(400).json({ success: false, message: "Invalid ID" });
       return;
     }
 
     const idn = await IDN.findByIdAndDelete(id);
 
     if (!idn) {
-      res.status(404).json({ success: false, message: 'IDN not found' });
+      res.status(404).json({ success: false, message: "IDN not found" });
       return;
     }
 
-    res.status(200).json({ success: true, message: 'IDN deleted successfully' });
+    res
+      .status(200)
+      .json({ success: true, message: "IDN deleted successfully" });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: 'Error deleting IDN', error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Error deleting IDN",
+      error: error.message,
+    });
   }
 };
 
 export const updateIDN = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    if (typeof id !== 'string') {
-      res.status(400).json({ success: false, message: 'Invalid ID' });
+    if (typeof id !== "string") {
+      res.status(400).json({ success: false, message: "Invalid ID" });
       return;
     }
 
-    const updatedIDN = await IDN.findByIdAndUpdate(
-      id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const updatedIDN = await IDN.findByIdAndUpdate(id, req.body, {
+      new: true,
+      runValidators: true,
+    });
 
     if (!updatedIDN) {
-      res.status(404).json({ success: false, message: 'IDN not found' });
+      res.status(404).json({ success: false, message: "IDN not found" });
       return;
     }
 
     res.status(200).json({
       success: true,
-      data: updatedIDN
+      data: updatedIDN,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: 'Failed to update IDN',
-      error: error.message
+      message: "Failed to update IDN",
+      error: error.message,
     });
   }
 };
 
-
-export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<void> => {
+export const getAllIDNsDeals00 = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -190,46 +227,46 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
               $match: {
                 $expr: userObjectId
                   ? {
-                    $and: [
-                      { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] }
-                    ]
-                  }
+                      $and: [
+                        { $eq: ["$idn", "$$idnId"] },
+                        { $eq: ["$user", userObjectId] },
+                      ],
+                    }
                   : {
-                    $eq: ["$idn", "$$idnId"]
-                  }
-              }
+                      $eq: ["$idn", "$$idnId"],
+                    },
+              },
             },
             {
               $lookup: {
                 from: "gpos",
                 localField: "gpo",
                 foreignField: "_id",
-                as: "gpo"
-              }
+                as: "gpo",
+              },
             },
-            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } }
+            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
           ],
-          as: "hospitals"
-        }
+          as: "hospitals",
+        },
       },
 
       // 🔥 STEP 2: Remove empty IDNs ONLY if userId exists
       ...(userObjectId
         ? [
-          {
-            $match: {
-              "hospitals.0": { $exists: true }
-            }
-          }
-        ]
+            {
+              $match: {
+                "hospitals.0": { $exists: true },
+              },
+            },
+          ]
         : []),
 
       // 🔥 STEP 3: Extract hospitalIds
       {
         $addFields: {
-          hospitalIds: "$hospitals._id"
-        }
+          hospitalIds: "$hospitals._id",
+        },
       },
 
       // 🔥 STEP 4: Deals lookup
@@ -241,9 +278,9 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
             {
               $match: {
                 $expr: {
-                  $in: ["$hospital", "$$hospitalIds"]
-                }
-              }
+                  $in: ["$hospital", "$$hospitalIds"],
+                },
+              },
             },
             { $unwind: "$products" },
             {
@@ -251,13 +288,13 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
                 from: "products",
                 localField: "products.product",
                 foreignField: "_id",
-                as: "product"
-              }
+                as: "product",
+              },
             },
-            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } }
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
           ],
-          as: "deals"
-        }
+          as: "deals",
+        },
       },
 
       // 🔥 STEP 5: Hospital-level aggregation
@@ -282,13 +319,13 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
                         $filter: {
                           input: "$deals",
                           as: "d",
-                          cond: { $eq: ["$$d.hospital", "$$h._id"] }
-                        }
+                          cond: { $eq: ["$$d.hospital", "$$h._id"] },
+                        },
                       },
                       as: "d",
-                      in: { $ifNull: ["$$d.products.dealAmount", 0] }
-                    }
-                  }
+                      in: { $ifNull: ["$$d.products.dealAmount", 0] },
+                    },
+                  },
                 },
 
                 expectedARRByProduct: {
@@ -301,14 +338,14 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
                               $filter: {
                                 input: "$deals",
                                 as: "d",
-                                cond: { $eq: ["$$d.hospital", "$$h._id"] }
-                              }
+                                cond: { $eq: ["$$d.hospital", "$$h._id"] },
+                              },
                             },
                             as: "d",
-                            in: "$$d.product.name"
-                          }
-                        }
-                      ]
+                            in: "$$d.product.name",
+                          },
+                        },
+                      ],
                     },
                     as: "productName",
                     in: {
@@ -323,32 +360,37 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
                                 cond: {
                                   $and: [
                                     { $eq: ["$$d.hospital", "$$h._id"] },
-                                    { $eq: ["$$d.product.name", "$$productName"] }
-                                  ]
-                                }
-                              }
+                                    {
+                                      $eq: [
+                                        "$$d.product.name",
+                                        "$$productName",
+                                      ],
+                                    },
+                                  ],
+                                },
+                              },
                             },
                             as: "d",
-                            in: { $ifNull: ["$$d.products.dealAmount", 0] }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                            in: { $ifNull: ["$$d.products.dealAmount", 0] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
 
       // 🔥 STEP 6: IDN total ARR
       {
         $addFields: {
           idnTotalExpectedARR: {
-            $sum: "$deals.products.dealAmount"
-          }
-        }
+            $sum: "$deals.products.dealAmount",
+          },
+        },
       },
 
       // 🔥 STEP 7: IDN product grouping
@@ -362,10 +404,10 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
                     $map: {
                       input: "$deals",
                       as: "d",
-                      in: "$$d.product.name"
-                    }
-                  }
-                ]
+                      in: "$$d.product.name",
+                    },
+                  },
+                ],
               },
               as: "productName",
               in: {
@@ -379,35 +421,35 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
                         $cond: [
                           { $eq: ["$$d.product.name", "$$productName"] },
                           { $ifNull: ["$$d.products.dealAmount", 0] },
-                          0
-                        ]
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                          0,
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
 
       // 🔥 STEP 8: Total hospitals
       {
         $addFields: {
-          totalHospitals: { $size: "$hospitals" }
-        }
+          totalHospitals: { $size: "$hospitals" },
+        },
       },
 
       {
         $project: {
           deals: 0,
-          hospitalIds: 0
-        }
+          hospitalIds: 0,
+        },
       },
 
       { $sort: { createdAt: -1 } },
       { $skip: skip },
-      { $limit: limit }
+      { $limit: limit },
     ];
 
     const idns = await IDN.aggregate(pipeline);
@@ -424,30 +466,30 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
               $match: {
                 $expr: userObjectId
                   ? {
-                    $and: [
-                      { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] }
-                    ]
-                  }
+                      $and: [
+                        { $eq: ["$idn", "$$idnId"] },
+                        { $eq: ["$user", userObjectId] },
+                      ],
+                    }
                   : {
-                    $eq: ["$idn", "$$idnId"]
-                  }
-              }
-            }
+                      $eq: ["$idn", "$$idnId"],
+                    },
+              },
+            },
           ],
-          as: "hospitals"
-        }
+          as: "hospitals",
+        },
       },
       ...(userObjectId
         ? [
-          {
-            $match: {
-              "hospitals.0": { $exists: true }
-            }
-          }
-        ]
+            {
+              $match: {
+                "hospitals.0": { $exists: true },
+              },
+            },
+          ]
         : []),
-      { $count: "total" }
+      { $count: "total" },
     ];
 
     const totalResult = await IDN.aggregate(totalPipeline);
@@ -460,20 +502,22 @@ export const getAllIDNsDeals00 = async (req: Request, res: Response): Promise<vo
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve IDNs and deals data",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getAllIDNsDeals = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -491,7 +535,9 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
       }
     } else {
       if (req.user?._id) {
-        userObjectId = new mongoose.Types.ObjectId(req.user._id as unknown as string);
+        userObjectId = new mongoose.Types.ObjectId(
+          req.user._id as unknown as string,
+        );
       }
     }
 
@@ -513,46 +559,46 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
               $match: {
                 $expr: userObjectId
                   ? {
-                    $and: [
-                      { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] }
-                    ]
-                  }
+                      $and: [
+                        { $eq: ["$idn", "$$idnId"] },
+                        { $eq: ["$user", userObjectId] },
+                      ],
+                    }
                   : {
-                    $eq: ["$idn", "$$idnId"]
-                  }
-              }
+                      $eq: ["$idn", "$$idnId"],
+                    },
+              },
             },
             {
               $lookup: {
                 from: "gpos",
                 localField: "gpo",
                 foreignField: "_id",
-                as: "gpo"
-              }
+                as: "gpo",
+              },
             },
-            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } }
+            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
           ],
-          as: "hospitals"
-        }
+          as: "hospitals",
+        },
       },
 
       // 🔥 STEP 2: Remove empty IDNs ONLY if userId exists
       ...(userObjectId
         ? [
-          {
-            $match: {
-              "hospitals.0": { $exists: true }
-            }
-          }
-        ]
+            {
+              $match: {
+                "hospitals.0": { $exists: true },
+              },
+            },
+          ]
         : []),
 
       // 🔥 STEP 3: Extract hospitalIds
       {
         $addFields: {
-          hospitalIds: "$hospitals._id"
-        }
+          hospitalIds: "$hospitals._id",
+        },
       },
 
       // 🔥 STEP 4: Deals lookup
@@ -564,9 +610,9 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
             {
               $match: {
                 $expr: {
-                  $in: ["$hospital", "$$hospitalIds"]
-                }
-              }
+                  $in: ["$hospital", "$$hospitalIds"],
+                },
+              },
             },
             { $unwind: "$products" },
             {
@@ -574,13 +620,13 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
                 from: "products",
                 localField: "products.product",
                 foreignField: "_id",
-                as: "product"
-              }
+                as: "product",
+              },
             },
-            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } }
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
           ],
-          as: "deals"
-        }
+          as: "deals",
+        },
       },
 
       // 🔥 STEP 5: Hospital-level aggregation
@@ -605,13 +651,13 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
                         $filter: {
                           input: "$deals",
                           as: "d",
-                          cond: { $eq: ["$$d.hospital", "$$h._id"] }
-                        }
+                          cond: { $eq: ["$$d.hospital", "$$h._id"] },
+                        },
                       },
                       as: "d",
-                      in: { $ifNull: ["$$d.products.dealAmount", 0] }
-                    }
-                  }
+                      in: { $ifNull: ["$$d.products.dealAmount", 0] },
+                    },
+                  },
                 },
 
                 expectedARRByProduct: {
@@ -624,14 +670,14 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
                               $filter: {
                                 input: "$deals",
                                 as: "d",
-                                cond: { $eq: ["$$d.hospital", "$$h._id"] }
-                              }
+                                cond: { $eq: ["$$d.hospital", "$$h._id"] },
+                              },
                             },
                             as: "d",
-                            in: "$$d.product.name"
-                          }
-                        }
-                      ]
+                            in: "$$d.product.name",
+                          },
+                        },
+                      ],
                     },
                     as: "productName",
                     in: {
@@ -646,32 +692,37 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
                                 cond: {
                                   $and: [
                                     { $eq: ["$$d.hospital", "$$h._id"] },
-                                    { $eq: ["$$d.product.name", "$$productName"] }
-                                  ]
-                                }
-                              }
+                                    {
+                                      $eq: [
+                                        "$$d.product.name",
+                                        "$$productName",
+                                      ],
+                                    },
+                                  ],
+                                },
+                              },
                             },
                             as: "d",
-                            in: { $ifNull: ["$$d.products.dealAmount", 0] }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                            in: { $ifNull: ["$$d.products.dealAmount", 0] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
 
       // 🔥 STEP 6: IDN total ARR
       {
         $addFields: {
           idnTotalExpectedARR: {
-            $sum: "$deals.products.dealAmount"
-          }
-        }
+            $sum: "$deals.products.dealAmount",
+          },
+        },
       },
 
       // 🔥 STEP 7: IDN product grouping
@@ -685,10 +736,10 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
                     $map: {
                       input: "$deals",
                       as: "d",
-                      in: "$$d.product.name"
-                    }
-                  }
-                ]
+                      in: "$$d.product.name",
+                    },
+                  },
+                ],
               },
               as: "productName",
               in: {
@@ -702,35 +753,35 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
                         $cond: [
                           { $eq: ["$$d.product.name", "$$productName"] },
                           { $ifNull: ["$$d.products.dealAmount", 0] },
-                          0
-                        ]
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+                          0,
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
 
       // 🔥 STEP 8: Total hospitals
       {
         $addFields: {
-          totalHospitals: { $size: "$hospitals" }
-        }
+          totalHospitals: { $size: "$hospitals" },
+        },
       },
 
       {
         $project: {
           deals: 0,
-          hospitalIds: 0
-        }
+          hospitalIds: 0,
+        },
       },
 
       { $sort: { createdAt: -1 } },
       { $skip: skip },
-      { $limit: limit }
+      { $limit: limit },
     ];
 
     const idns = await IDN.aggregate(pipeline);
@@ -747,30 +798,30 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
               $match: {
                 $expr: userObjectId
                   ? {
-                    $and: [
-                      { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] }
-                    ]
-                  }
+                      $and: [
+                        { $eq: ["$idn", "$$idnId"] },
+                        { $eq: ["$user", userObjectId] },
+                      ],
+                    }
                   : {
-                    $eq: ["$idn", "$$idnId"]
-                  }
-              }
-            }
+                      $eq: ["$idn", "$$idnId"],
+                    },
+              },
+            },
           ],
-          as: "hospitals"
-        }
+          as: "hospitals",
+        },
       },
       ...(userObjectId
         ? [
-          {
-            $match: {
-              "hospitals.0": { $exists: true }
-            }
-          }
-        ]
+            {
+              $match: {
+                "hospitals.0": { $exists: true },
+              },
+            },
+          ]
         : []),
-      { $count: "total" }
+      { $count: "total" },
     ];
 
     const totalResult = await IDN.aggregate(totalPipeline);
@@ -783,15 +834,14 @@ export const getAllIDNsDeals = async (req: AuthRequest, res: Response): Promise<
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
-      }
+        totalPages: Math.ceil(total / limit),
+      },
     });
-
   } catch (error: any) {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve IDNs and deals data",
-      error: error.message
+      error: error.message,
     });
   }
 };

@@ -110,6 +110,31 @@ export const getHospitals = async (
   }
 };
 
+// Sample Test
+export const HospitalIDName = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const hospitals = await Hospital.find({}, "_id hospitalName");
+
+    const formattedHospitals = hospitals.reduce(
+      (acc: Record<string, string>, hospital: any) => {
+        acc[hospital.hospitalName] = hospital._id.toString();
+        return acc;
+      },
+      {},
+    );
+
+    res.status(200).json(formattedHospitals);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch hospitals",
+      error,
+    });
+  }
+};
 
 export const getHospitalByHospitalId = async (
   req: Request,
@@ -162,8 +187,8 @@ export const getHospitalByHospitalId = async (
     const responseData = {
       ...hospital.toObject(),
       beds: totalBeds, // Total beds across all deals
-      productInfo,    // List of products and their beds
-      contacts,       // Manually attached contacts
+      productInfo, // List of products and their beds
+      contacts, // Manually attached contacts
       deals,
     };
 
@@ -363,7 +388,6 @@ export const getHospitalsByIDN = async (
   }
 };
 
-
 export const getAllHospitalsDeals00 = async (
   req: AuthRequest,
   res: Response,
@@ -403,12 +427,12 @@ export const getAllHospitalsDeals00 = async (
 
           ...(productStage
             ? [
-              {
-                $match: {
-                  "products.stage": productStage,
+                {
+                  $match: {
+                    "products.stage": productStage,
+                  },
                 },
-              },
-            ]
+              ]
             : []),
 
           {
@@ -654,7 +678,9 @@ export const getAllHospitalsDeals00 = async (
       $addFields: {
         beds: {
           $ifNull: [
-            { $arrayElemAt: [{ $arrayElemAt: ["$deals.products.beds", 0] }, 0] },
+            {
+              $arrayElemAt: [{ $arrayElemAt: ["$deals.products.beds", 0] }, 0],
+            },
             0,
           ],
         },
@@ -728,7 +754,9 @@ export const getAllHospitalsDeals = async (
       }
     } else {
       if (req.user?._id) {
-        filterUserId = new mongoose.Types.ObjectId(req.user._id as unknown as string);
+        filterUserId = new mongoose.Types.ObjectId(
+          req.user._id as unknown as string,
+        );
       }
     }
 
@@ -753,12 +781,12 @@ export const getAllHospitalsDeals = async (
 
           ...(productStage
             ? [
-              {
-                $match: {
-                  "products.stage": productStage,
+                {
+                  $match: {
+                    "products.stage": productStage,
+                  },
                 },
-              },
-            ]
+              ]
             : []),
 
           {
@@ -1004,7 +1032,9 @@ export const getAllHospitalsDeals = async (
       $addFields: {
         beds: {
           $ifNull: [
-            { $arrayElemAt: [{ $arrayElemAt: ["$deals.products.beds", 0] }, 0] },
+            {
+              $arrayElemAt: [{ $arrayElemAt: ["$deals.products.beds", 0] }, 0],
+            },
             0,
           ],
         },

@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/authMiddleware.ts';
 import Contact from '../model/Contact.ts';
 import mongoose from "mongoose";
 
-
+/*
 export const getContacts = async (req: Request, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -85,6 +85,182 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
     ];
 
     const result = await Contact.aggregate(pipeline);
+    const contacts = result[0]?.data || [];
+    const total = result[0]?.totalCount[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalContacts: total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: total > skip + contacts.length,
+      data: contacts
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve contacts",
+      error: error.message
+    });
+  }
+};
+*/
+
+export const getContacts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const userId = req.query.userId as string;
+    const productId = req.query.productId as string;
+
+    const skip = (page - 1) * limit;
+
+    const matchStage: any = {};
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      matchStage.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      matchStage["hospitalDeals.products.product"] =
+        new mongoose.Types.ObjectId(productId);
+    }
+
+    if (search) {
+      matchStage.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { designation: { $regex: search, $options: "i" } },
+        { "hospital.hospitalName": { $regex: search, $options: "i" } }
+      ];
+    }
+
+    const pipeline: any[] = [
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "hospital",
+          foreignField: "_id",
+          as: "hospital"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$hospital",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "deals",
+          localField: "hospital._id",
+          foreignField: "hospital",
+          as: "hospitalDeals"
+        }
+      },
+
+      {
+        $lookup: {
+          from: "idns",
+          localField: "hospital.idn",
+          foreignField: "_id",
+          as: "hospital.idn"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$hospital.idn",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $lookup: {
+          from: "gpos",
+          localField: "hospital.gpo",
+          foreignField: "_id",
+          as: "hospital.gpo"
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$hospital.gpo",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // Populate only _id and name for GPO & IDN
+      {
+        $project: {
+          firstName: 1,
+          lastName: 1,
+          email: 1,
+          designation: 1,
+          phone: 1,
+          mobile: 1,
+          user: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          hospitalDeals: 1,
+
+          hospital: {
+            _id: "$hospital._id",
+            hospitalName: "$hospital.hospitalName",
+            address: "$hospital.address",
+            city: "$hospital.city",
+            state: "$hospital.state",
+            zip: "$hospital.zip",
+            website: "$hospital.website",
+            phone: "$hospital.phone",
+
+            gpo: {
+              _id: "$hospital.gpo._id",
+              name: "$hospital.gpo.name"
+            },
+
+            idn: {
+              _id: "$hospital.idn._id",
+              name: "$hospital.idn.name"
+            }
+          }
+        }
+      },
+
+      {
+        $match: matchStage
+      },
+
+      {
+        $sort: {
+          firstName: 1,
+          lastName: 1
+        }
+      },
+
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit }
+          ],
+
+          totalCount: [
+            { $count: "total" }
+          ]
+        }
+      }
+    ];
+
+    const result = await Contact.aggregate(pipeline);
+
     const contacts = result[0]?.data || [];
     const total = result[0]?.totalCount[0]?.total || 0;
 

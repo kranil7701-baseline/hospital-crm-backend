@@ -27,7 +27,7 @@ const HospitalSchema: Schema = new Schema({
   idn: {
     type: Schema.Types.ObjectId,
     ref: 'IDN',
-    required: true
+    // required: true
   },
   gpo: {
     type: Schema.Types.ObjectId,
@@ -40,7 +40,7 @@ const HospitalSchema: Schema = new Schema({
   user: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    // required: true
   },
   hospitalName: {
     type: String,
@@ -49,22 +49,22 @@ const HospitalSchema: Schema = new Schema({
   },
   address: {
     type: String,
-    required: true,
+    // required: true,
     trim: true
   },
   city: {
     type: String,
-    required: true,
+    // required: true,
     trim: true
   },
   state: {
     type: String,
-    required: true,
+    // required: true,
     trim: true
   },
   zip: {
     type: String,
-    required: true,
+    // required: true,
     trim: true
   },
   competitiveProduct: {
