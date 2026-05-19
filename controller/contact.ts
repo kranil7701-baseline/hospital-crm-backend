@@ -135,6 +135,7 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
         { lastName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { designation: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
         { "hospital.hospitalName": { $regex: search, $options: "i" } }
       ];
     }
@@ -197,19 +198,18 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
         }
       },
 
-      // Populate only _id and name for GPO & IDN
+      // Send only required fields
       {
         $project: {
           firstName: 1,
           lastName: 1,
           email: 1,
           designation: 1,
-          phone: 1,
+          phoneNumber: 1,
           mobile: 1,
           user: 1,
           createdAt: 1,
           updatedAt: 1,
-          hospitalDeals: 1,
 
           hospital: {
             _id: "$hospital._id",

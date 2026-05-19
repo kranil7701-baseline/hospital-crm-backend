@@ -38,7 +38,7 @@ const DealSchema: Schema = new Schema({
   gpo: {
     type: Schema.Types.ObjectId,
     ref: 'GPO',
-    required: true,
+    // required: true,
     index: true
   },
   products: [
@@ -61,6 +61,8 @@ const DealSchema: Schema = new Schema({
           "Committee",
           "Trial",
           "Pending Decision",
+          "Ghosted",
+          "Closed Lost",
           "Closed Won",
           "Implemented"
         ],

@@ -28,7 +28,7 @@ const ContactSchema: Schema = new Schema({
   },
   designation: {
     type: String,
-    required: true,
+    // required: true,
     trim: true
   },
   hospital: {
@@ -39,7 +39,7 @@ const ContactSchema: Schema = new Schema({
   phoneNumber: {
     type: String,
     required: true,
-    unique: true,
+     unique: true,
     trim: true
   },
   email: {
@@ -48,12 +48,11 @@ const ContactSchema: Schema = new Schema({
     unique: true,
     trim: true,
     lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
   },
   user: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    // required: true
   },
   isPrimary: {
     type: Boolean,

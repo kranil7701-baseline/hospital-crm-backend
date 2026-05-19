@@ -1,11 +1,13 @@
 import express from 'express';
-import { getGPOs, getGPOById, createGPO, deleteGPO, updateGPO, getAllGPODeals, getAllGPODeals00 } from '../controller/gpo.ts';
+import { getGPOs, getGPOById, createGPO, deleteGPO, updateGPO, getAllGPODeals, getAllGPODeals00, GetGPONameIDS} from '../controller/gpo.ts';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.ts';
 import { UserRole } from '../model/User.ts';
 
 const router = express.Router();
 
 router.use(protect);
+
+router.get("/gpo-name-id", GetGPONameIDS);
 
 router.get('/all-gpos', getGPOs);
 // router.get('/all-gpo-deals', getAllGPODeals);

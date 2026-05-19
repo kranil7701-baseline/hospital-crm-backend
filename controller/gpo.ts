@@ -6,6 +6,34 @@ import Hospital from '../model/Hospital.ts';
 import Product from '../model/Product.ts';
 import mongoose from "mongoose";
 
+
+
+export const GetGPONameIDS = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const gpos = await GPOModel.find({}, "_id name");
+
+    const formattedGPOs = gpos.reduce(
+      (acc: Record<string, string>, idn: any) => {
+        acc[idn.name] = idn._id.toString();
+        return acc;
+      },
+      {},
+    );
+
+    res.status(200).json(formattedGPOs);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch IDNs",
+      error,
+    });
+  }
+};
+
+
 export const getGPOs = async (req: Request, res: Response): Promise<void> => {
   try {
     // Query params
