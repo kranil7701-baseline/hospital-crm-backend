@@ -99,13 +99,11 @@ export const getNoteById = async (
 
     res.status(200).json({ success: true, data: note });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching note",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching note",
+      error: error.message,
+    });
   }
 };
 
@@ -122,7 +120,7 @@ export const createNote = async (
       m.replace("@", "").trim().toLowerCase(),
     );
 
-    console.log("Tagged users 0000000000000:", cleanedMentions);
+    // console.log("Tagged users 0000000000000:", cleanedMentions);
 
     if (cleanedMentions.length > 0) {
       try {
@@ -186,13 +184,11 @@ export const updateNote = async (
 
     res.status(200).json({ success: true, data: updatedNote });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update note",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update note",
+      error: error.message,
+    });
   }
 };
 
@@ -213,12 +209,10 @@ export const deleteNote = async (
       .status(200)
       .json({ success: true, message: "Note deleted successfully" });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error deleting note",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error deleting note",
+      error: error.message,
+    });
   }
 };

@@ -265,7 +265,11 @@ export const getDeals = async (
     const productIdsRaw = req.query.productIds as string | string[];
     const gpoId = req.query.gpoId as string;
     const page = req.query.page ? parseInt(req.query.page as string) : null;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : (page ? 15 : null);
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string)
+      : page
+        ? 15
+        : null;
     const skip = page ? (page - 1) * (limit || 15) : 0;
 
     let productIds: mongoose.Types.ObjectId[] = [];
@@ -310,12 +314,12 @@ export const getDeals = async (
       // 🔥 PRODUCT FILTER
       ...(productIds.length > 0
         ? [
-          {
-            $match: {
-              "products.product": { $in: productIds },
+            {
+              $match: {
+                "products.product": { $in: productIds },
+              },
             },
-          },
-        ]
+          ]
         : []),
 
       // 🔥 ENRICH WITH HOSPITAL (Needed for search)
@@ -332,20 +336,20 @@ export const getDeals = async (
       // 🔥 SEARCH FILTER
       ...(searchQuery
         ? [
-          {
-            $match: {
-              $or: [
-                { "products.stage": { $regex: searchQuery, $options: "i" } },
-                {
-                  "hospital.hospitalName": {
-                    $regex: searchQuery,
-                    $options: "i",
+            {
+              $match: {
+                $or: [
+                  { "products.stage": { $regex: searchQuery, $options: "i" } },
+                  {
+                    "hospital.hospitalName": {
+                      $regex: searchQuery,
+                      $options: "i",
+                    },
                   },
-                },
-              ],
+                ],
+              },
             },
-          },
-        ]
+          ]
         : []),
 
       {
@@ -430,10 +434,9 @@ export const getDeals = async (
               },
             },
             { $sort: { createdAt: -1 } },
-            ...(page || limit ? [
-              { $skip: skip },
-              ...(limit ? [{ $limit: limit }] : [])
-            ] : []),
+            ...(page || limit
+              ? [{ $skip: skip }, ...(limit ? [{ $limit: limit }] : [])]
+              : []),
           ],
 
           totalDealsCount: [{ $count: "count" }],
@@ -471,23 +474,23 @@ export const getDeals = async (
             // 🔥 USER FILTER (important)
             ...(userId && mongoose.Types.ObjectId.isValid(userId)
               ? [
-                {
-                  $match: {
-                    user: new mongoose.Types.ObjectId(userId),
+                  {
+                    $match: {
+                      user: new mongoose.Types.ObjectId(userId),
+                    },
                   },
-                },
-              ]
+                ]
               : []),
 
             // 🔥 GPO FILTER
             ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
-                {
-                  $match: {
-                    gpo: new mongoose.Types.ObjectId(gpoId),
+                  {
+                    $match: {
+                      gpo: new mongoose.Types.ObjectId(gpoId),
+                    },
                   },
-                },
-              ]
+                ]
               : []),
 
             { $unwind: "$products" },
@@ -515,8 +518,8 @@ export const getDeals = async (
               // if productIds are passed → only those products get real revenue
               productIds.length > 0
                 ? {
-                  $in: ["$_id", productIds],
-                }
+                    $in: ["$_id", productIds],
+                  }
                 : true,
 
               // true case → sum revenue
@@ -590,7 +593,8 @@ export const createDeal = async (
     if (existingDeals.length > 0) {
       res.status(400).json({
         success: false,
-        message: "One or more of these products already have a deal for this hospital",
+        message:
+          "One or more of these products already have a deal for this hospital",
       });
       return;
     }
@@ -617,6 +621,7 @@ export const createDeal = async (
   }
 };
 
+/*
 export const updateDealProductStage = async (
   req: Request,
   res: Response,
@@ -666,6 +671,102 @@ export const updateDealProductStage = async (
       res.status(404).json({
         success: false,
         message: "Deal or product not found",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Stage updated successfully",
+      data: updatedDeal,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update stage",
+      error: error.message,
+    });
+  }
+};
+*/
+
+export const updateDealProductStage = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { dealId, productId, stage } = req.body;
+
+    // ✅ Logged in user
+    const loggedInUser = req.user;
+
+    // ✅ Validation
+    if (!dealId || !productId || !stage) {
+      res.status(400).json({
+        success: false,
+        message: "dealId, productId and stage are required",
+      });
+      return;
+    }
+
+    // ✅ Validate ObjectIds
+    if (
+      !mongoose.Types.ObjectId.isValid(dealId) ||
+      !mongoose.Types.ObjectId.isValid(productId)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid ObjectId(s)",
+      });
+      return;
+    }
+
+    // ✅ Find deal first
+    const deal = await Deal.findById(dealId);
+
+    if (!deal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal not found",
+      });
+      return;
+    }
+
+    // ✅ Permission checks
+    const isAdmin = loggedInUser?.role === UserRole.ADMIN;
+
+    const isDealOwner = deal.user.toString() === loggedInUser?._id?.toString();
+
+    // ✅ Only admin or deal owner can update
+    if (!isAdmin && !isDealOwner) {
+      res.status(403).json({
+        success: false,
+        message: "You are not authorized to update this deal stage",
+      });
+      return;
+    }
+
+    // ✅ Update product stage
+    const updatedDeal = await Deal.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(dealId),
+        "products.product": new mongoose.Types.ObjectId(productId),
+      },
+      {
+        $set: {
+          "products.$.stage": stage,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found in this deal",
       });
       return;
     }
@@ -801,8 +902,17 @@ export const updateDeal = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { dealId, dealAmount, quantity, stage, expectedCloseDate, dealDate, product, userId, beds } =
-      req.body;
+    const {
+      dealId,
+      dealAmount,
+      quantity,
+      stage,
+      expectedCloseDate,
+      dealDate,
+      product,
+      userId,
+      beds,
+    } = req.body;
 
     if (!dealId) {
       res.status(400).json({
@@ -843,8 +953,7 @@ export const updateDeal = async (
     }
     if (dealAmount !== undefined)
       updateFields["products.0.dealAmount"] = dealAmount;
-    if (quantity !== undefined)
-      updateFields["products.0.quantity"] = quantity;
+    if (quantity !== undefined) updateFields["products.0.quantity"] = quantity;
     if (stage) updateFields["products.0.stage"] = stage;
     if (expectedCloseDate)
       updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
@@ -892,9 +1001,6 @@ export const updateDeal = async (
     });
   }
 };
-
-
-
 
 export const getDashboardStats = async (
   req: AuthRequest,
@@ -1132,12 +1238,12 @@ export const getClosedWonDeals = async (
       // Search by hospital name
       ...(search
         ? [
-          {
-            $match: {
-              "hospital.hospitalName": { $regex: search, $options: "i" },
+            {
+              $match: {
+                "hospital.hospitalName": { $regex: search, $options: "i" },
+              },
             },
-          },
-        ]
+          ]
         : []),
 
       {
@@ -1266,12 +1372,12 @@ export const getImplementedDeals = async (
       // Search by hospital name
       ...(search
         ? [
-          {
-            $match: {
-              "hospital.hospitalName": { $regex: search, $options: "i" },
+            {
+              $match: {
+                "hospital.hospitalName": { $regex: search, $options: "i" },
+              },
             },
-          },
-        ]
+          ]
         : []),
 
       {
