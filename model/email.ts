@@ -161,7 +161,6 @@ export interface IEmailAttachment {
 export interface IEmail extends Document {
   graphId: string;
 
-  crmUser: Types.ObjectId;
   hospital?: Types.ObjectId;
 
   sender?: IEmailRecipient;
@@ -227,13 +226,6 @@ const EmailSchema = new Schema<IEmail>(
       index: true,
     },
 
-    crmUser: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
-    },
-
     hospital: {
       type: Schema.Types.ObjectId,
       ref: "Hospital",
@@ -287,12 +279,7 @@ const EmailSchema = new Schema<IEmail>(
 
 // 🔥 IMPORTANT INDEXES
 EmailSchema.index(
-  { crmUser: 1, receivedDateTime: -1 },
-  { background: true }
-);
-
-EmailSchema.index(
-  { graphId: 1, crmUser: 1 },
+  { graphId: 1, hospital: 1 },
   { unique: true }
 );
 

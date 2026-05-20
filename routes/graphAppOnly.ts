@@ -2,14 +2,11 @@ import express from "express";
 import {
   getMailboxMessages,
   sendMailFromMailbox,
-  syncMailboxMessages,
   getSentEmailsFromDB,
   getReceivedEmailsFromDB,
   replyToMessage,
   getAttachmentContent,
-  syncMailboxMessagesByDate,
   syncHospitalEmails
-
 } from "../controller/graphAppOnlyAPI.ts";
 import { protect } from "../middleware/authMiddleware.ts";
 
