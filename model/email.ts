@@ -162,6 +162,7 @@ export interface IEmail extends Document {
   graphId: string;
 
   crmUser: Types.ObjectId;
+  hospital?: Types.ObjectId;
 
   sender?: IEmailRecipient;
   from?: IEmailRecipient;
@@ -230,6 +231,12 @@ const EmailSchema = new Schema<IEmail>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
+    },
+
+    hospital: {
+      type: Schema.Types.ObjectId,
+      ref: "Hospital",
       index: true,
     },
 

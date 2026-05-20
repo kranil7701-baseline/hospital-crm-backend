@@ -5,6 +5,7 @@ import User from "../model/User.ts";
 import Hospital from "../model/Hospital.ts";
 import Contact from "../model/Contact.ts";
 import { getAppOnlyToken } from "../helper/graphEmail.ts";
+import mongoose from "mongoose";
 
 const normalizeSubject = (subject: string): string => {
   if (!subject) return "";
@@ -570,13 +571,18 @@ export const getSentEmailsFromDB = async (
       return;
     }
 
-    const { page = 1, search = "" } = req.query;
+    const { page = 1, search = "", hospitalId } = req.query;
     const limit = 10;
     const skip = (Number(page) - 1) * limit;
     const userEmail = req.user.email.toLowerCase();
 
-    // 1. Build Base Match: All emails for this CRM user
-    const baseMatch: any = { crmUser: req.user._id };
+    // 1. Build Base Match: Filter by hospital if hospitalId is passed, otherwise fall back to user's emails
+    const baseMatch: any = {};
+    if (hospitalId) {
+      baseMatch.hospital = new mongoose.Types.ObjectId(hospitalId as string);
+    } else {
+      baseMatch.crmUser = req.user._id;
+    }
 
     // 2. Define the common aggregation stages for threading and filtering
     const threadingStages: any[] = [
@@ -682,13 +688,18 @@ export const getReceivedEmailsFromDB = async (
       return;
     }
 
-    const { page = 1, search = "" } = req.query;
+    const { page = 1, search = "", hospitalId } = req.query;
     const limit = 10;
     const skip = (Number(page) - 1) * limit;
     const userEmail = req.user.email.toLowerCase();
 
-    // 1. Build Base Match: All emails for this CRM user
-    const baseMatch: any = { crmUser: req.user._id };
+    // 1. Build Base Match: Filter by hospital if hospitalId is passed, otherwise fall back to user's emails
+    const baseMatch: any = {};
+    if (hospitalId) {
+      baseMatch.hospital = new mongoose.Types.ObjectId(hospitalId as string);
+    } else {
+      baseMatch.crmUser = req.user._id;
+    }
 
     // 2. Define the common aggregation stages for threading and filtering
     const threadingStages: any[] = [
@@ -1423,20 +1434,25 @@ export const syncHospitalEmails = async (
     // 2. Get Application Token
     const accessToken = await getAppOnlyToken();
 
-    // 3. Build Graph API Search Query
-    // Microsoft Graph $search can handle multiple terms with OR
-    const searchQuery = contactEmails.map((email) => `"${email}"`).join(" OR ");
+    // 3. Build Graph API Search Query with last 3 months date filter
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const formattedDate = threeMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD
+
+    const emailTerms = contactEmails.map((email) => `\\"${email}\\"`).join(" OR ");
+    const searchQuery = `"(${emailTerms}) AND received>=${formattedDate}"`;
 
     // 4. Fetch messages from Graph API for all users in DB
     const users = await User.find({});
     let totalSynced = 0;
 
-    for (const dbUser of users) {
+    const syncUserEmails = async (dbUser: any): Promise<number> => {
       const crmUserId = dbUser._id;
       const userEmail = dbUser.email;
 
-      if (!userEmail) continue;
+      if (!userEmail) return 0;
 
+      let userSyncedCount = 0;
       try {
         const select =
           "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
@@ -1459,14 +1475,17 @@ export const syncHospitalEmails = async (
           const data = await response.json();
 
           if (!response.ok) {
-            console.warn(`Graph API error for user ${userEmail}:`, data?.error?.message);
-            break; // Stop fetching for this user and proceed to next
+            console.warn(
+              `Graph API error for user ${userEmail}:`,
+              data?.error?.message,
+            );
+            break; // Stop fetching for this user and proceed
           }
 
           const messages = data.value || [];
           if (messages.length === 0) break;
 
-          totalSynced += messages.length;
+          userSyncedCount += messages.length;
 
           // 🔥 Process attachments in chunks
           for (let i = 0; i < messages.length; i += ATTACHMENT_CONCURRENCY) {
@@ -1506,6 +1525,7 @@ export const syncHospitalEmails = async (
                     importance: msg.importance,
                     attachments: msg.attachments,
                     crmUser: crmUserId,
+                    hospital: new mongoose.Types.ObjectId(hospitalId),
                     normalizedSubject: normalizeSubject(msg.subject || ""),
                     "body.content": msg.body?.content,
                     "body.contentType": msg.body?.contentType,
@@ -1530,7 +1550,29 @@ export const syncHospitalEmails = async (
       } catch (userError: any) {
         console.error(`Error syncing emails for user ${userEmail}:`, userError);
       }
-    }
+      return userSyncedCount;
+    };
+
+    // Concurrency control: process at most 5 users concurrently
+    const CONCURRENCY_LIMIT = 5;
+    let index = 0;
+
+    const worker = async (): Promise<void> => {
+      while (index < users.length) {
+        const currentUserIndex = index++;
+        if (currentUserIndex >= users.length) break;
+        const dbUser = users[currentUserIndex];
+        const count = await syncUserEmails(dbUser);
+        totalSynced += count;
+      }
+    };
+
+    // Spin up workers
+    const workers = Array.from(
+      { length: Math.min(CONCURRENCY_LIMIT, users.length) },
+      worker,
+    );
+    await Promise.all(workers);
 
     res.status(200).json({
       success: true,
