@@ -292,13 +292,6 @@ export const getDeals = async (
     }
 
     // =========================
-    // 🔥 GPO FILTER
-    // =========================
-    if (gpoId && mongoose.Types.ObjectId.isValid(gpoId)) {
-      matchStage.gpo = new mongoose.Types.ObjectId(gpoId);
-    }
-
-    // =========================
     // 🔥 MAIN PIPELINE
     // =========================
     const pipeline: any[] = [
@@ -322,7 +315,7 @@ export const getDeals = async (
           ]
         : []),
 
-      // 🔥 ENRICH WITH HOSPITAL (Needed for search)
+      // 🔥 ENRICH WITH HOSPITAL (Needed for search & GPO filtering)
       {
         $lookup: {
           from: "hospitals",
@@ -332,6 +325,17 @@ export const getDeals = async (
         },
       },
       { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+
+      // 🔥 GPO FILTER (on hospital.gpo instead of deal.gpo to cover all deals correctly as GPO is hospital-centric)
+      ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
+        ? [
+            {
+              $match: {
+                "hospital.gpo": new mongoose.Types.ObjectId(gpoId),
+              },
+            },
+          ]
+        : []),
 
       // 🔥 SEARCH FILTER
       ...(searchQuery
@@ -482,12 +486,23 @@ export const getDeals = async (
                 ]
               : []),
 
-            // 🔥 GPO FILTER
+            // 🔥 lookup hospital to check its GPO
+            {
+              $lookup: {
+                from: "hospitals",
+                localField: "hospital",
+                foreignField: "_id",
+                as: "hospitalDoc",
+              },
+            },
+            { $unwind: "$hospitalDoc" },
+
+            // 🔥 GPO FILTER (on hospitalDoc.gpo instead of deal.gpo)
             ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
                   {
                     $match: {
-                      gpo: new mongoose.Types.ObjectId(gpoId),
+                      "hospitalDoc.gpo": new mongoose.Types.ObjectId(gpoId),
                     },
                   },
                 ]

@@ -198,6 +198,10 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
         }
       },
 
+      {
+        $match: matchStage
+      },
+
       // Send only required fields
       {
         $project: {
@@ -232,10 +236,6 @@ export const getContacts = async (req: Request, res: Response): Promise<void> =>
             }
           }
         }
-      },
-
-      {
-        $match: matchStage
       },
 
       {
