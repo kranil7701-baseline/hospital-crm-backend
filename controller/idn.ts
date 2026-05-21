@@ -569,11 +569,37 @@ export const getAllIDNsDeals = async (
                     },
               },
             },
+            // {
+            //   $lookup: {
+            //     from: "gpos",
+            //     localField: "gpo",
+            //     foreignField: "_id",
+            //     as: "gpo",
+            //   },
+            // },
             {
               $lookup: {
                 from: "gpos",
-                localField: "gpo",
-                foreignField: "_id",
+                let: { gpoId: "$gpo" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$_id", "$$gpoId"] },
+                    },
+                  },
+                  {
+                    $project: {
+                      // hospitals: 0,
+                      // createdAt: 0,
+                      // updatedAt: 0,
+                      // user: 0,
+                      // __v: 0,
+                      // _id: 0,
+                      name: 1,
+                      _id: 0,
+                    },
+                  },
+                ],
                 as: "gpo",
               },
             },

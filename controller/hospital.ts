@@ -1086,7 +1086,7 @@ export const getAllHospitalsDeals = async (
     });
   }
 };
-*/
+*/  
 
 export const getAllHospitalsDeals = async (
   req: AuthRequest,

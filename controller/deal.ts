@@ -1216,3 +1216,80 @@ export const getImplementedDeals = async (
     });
   }
 };
+
+export const HospitalProductCount = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+    const role = req.user?.role;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const isAdminOrExecutive = role === "Admin" || role === "Executive";
+
+    let hospitalCount = 0;
+    let productCount = 0;
+
+    if (isAdminOrExecutive) {
+      // Admin & Executive => show all hospitals and all deals
+
+      const totalHospitals = await Hospital.countDocuments();
+
+      const totalDeals = await Deal.countDocuments();
+
+      hospitalCount = totalHospitals;
+      productCount = totalDeals;
+    } else {
+      const objectUserId = new mongoose.Types.ObjectId(userId);
+
+      // Get all deals of user
+      const userDeals = await Deal.find(
+        { user: objectUserId },
+        "hospital",
+      ).lean();
+
+      // Hospitals from deals
+      const matchedHospitalIds = userDeals
+        .map((d: any) => d.hospital?.toString())
+        .filter((id: any) => id != null);
+
+      // Hospitals assigned directly
+      const assignedHospitals = await Hospital.find(
+        { user: objectUserId },
+        "_id",
+      ).lean();
+
+      const assignedHospitalIds = assignedHospitals.map((h: any) =>
+        h._id.toString(),
+      );
+
+      // Unique hospitals
+      const uniqueHospitalIds = new Set([
+        ...matchedHospitalIds,
+        ...assignedHospitalIds,
+      ]);
+
+      hospitalCount = uniqueHospitalIds.size;
+
+      // Total deals count
+      productCount = userDeals.length;
+    }
+
+    res.status(200).json({
+      success: true,
+      hospitalCount,
+      productCount,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch hospital and product count",
+      error: error.message,
+    });
+  }
+};
