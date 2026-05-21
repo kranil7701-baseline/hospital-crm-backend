@@ -17,48 +17,105 @@ export const getDashboardActivity = async (
 ): Promise<void> => {
   try {
     const userId = req.user?._id;
+    const userRole = req.user?.role;
 
     if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
       return;
     }
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
+    // 🔥 Check role
+    const isAdminOrExecutive = userRole === "Admin" || userRole === "Executive";
+
+    // 🔥 Dynamic match
+    const matchStage = isAdminOrExecutive ? {} : { user: objectUserId };
+
     const pipeline: any[] = [
-      { $match: { user: objectUserId } },
-      { $addFields: { activityType: "note" } },
+      { $match: matchStage },
+
+      {
+        $addFields: {
+          activityType: "note",
+        },
+      },
+
       {
         $unionWith: {
           coll: "calllogs",
+
           pipeline: [
-            { $match: { user: objectUserId } },
-            { $addFields: { activityType: "callLog" } },
+            { $match: matchStage },
+
+            {
+              $addFields: {
+                activityType: "callLog",
+              },
+            },
           ],
         },
       },
+
       { $sort: { createdAt: -1 } },
+
       { $limit: 5 },
+
       {
         $lookup: {
           from: "hospitals",
+
           localField: "hospital",
           foreignField: "_id",
-          pipeline: [{ $project: { hospitalName: 1 } }],
+
+          pipeline: [
+            {
+              $project: {
+                hospitalName: 1,
+              },
+            },
+          ],
+
           as: "hospital",
         },
       },
-      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+
+      {
+        $unwind: {
+          path: "$hospital",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
       {
         $lookup: {
           from: "contacts",
+
           localField: "contact",
           foreignField: "_id",
-          pipeline: [{ $project: { firstName: 1, lastName: 1 } }],
+
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+              },
+            },
+          ],
+
           as: "contact",
         },
       },
-      { $unwind: { path: "$contact", preserveNullAndEmptyArrays: true } },
+
+      {
+        $unwind: {
+          path: "$contact",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
     ];
 
     const combinedActivities = await Notes.aggregate(pipeline);
@@ -76,6 +133,7 @@ export const getDashboardActivity = async (
   }
 };
 
+/*
 export const getActivities = async (
   req: Request,
   res: Response,
@@ -161,6 +219,193 @@ export const getActivities = async (
     });
   }
 };
+*/
+
+export const getActivities = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const hospitalId = req.query.hospitalId as string;
+    const userId = req.query.userId as string;
+
+    // ✅ Pagination
+    const page = parseInt(req.query.page as string) || 1;
+
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const skip = (page - 1) * limit;
+
+    // ✅ Filters
+    const filter: any = {};
+
+    // ✅ Last 30 Days Activities Only (optional)
+    if (!req.query.showAll) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      filter.createdAt = { $gte: thirtyDaysAgo };
+    }
+
+    if (hospitalId) {
+      filter.hospital = new mongoose.Types.ObjectId(hospitalId);
+    }
+
+    if (userId) {
+      filter.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    const pipeline: any[] = [
+      // ================= TASKS =================
+      { $match: filter },
+
+      {
+        $addFields: {
+          activityType: "task",
+        },
+      },
+
+      // ================= NOTES =================
+      {
+        $unionWith: {
+          coll: "notes",
+
+          pipeline: [
+            { $match: filter },
+
+            {
+              $addFields: {
+                activityType: "note",
+              },
+            },
+          ],
+        },
+      },
+
+      // ================= CALL LOGS =================
+      {
+        $unionWith: {
+          coll: "calllogs",
+
+          pipeline: [
+            { $match: filter },
+
+            {
+              $addFields: {
+                activityType: "callLog",
+              },
+            },
+          ],
+        },
+      },
+
+      // ================= SORT =================
+      {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+
+      // ================= FACET =================
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+
+            { $limit: limit },
+
+            // 🔥 Hospital Populate
+            {
+              $lookup: {
+                from: "hospitals",
+
+                localField: "hospital",
+
+                foreignField: "_id",
+
+                pipeline: [
+                  {
+                    $project: {
+                      hospitalName: 1,
+                    },
+                  },
+                ],
+
+                as: "hospital",
+              },
+            },
+
+            {
+              $unwind: {
+                path: "$hospital",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+
+            // 🔥 Contact Populate
+            {
+              $lookup: {
+                from: "contacts",
+
+                localField: "contact",
+
+                foreignField: "_id",
+
+                pipeline: [
+                  {
+                    $project: {
+                      firstName: 1,
+                      lastName: 1,
+                    },
+                  },
+                ],
+
+                as: "contact",
+              },
+            },
+
+            {
+              $unwind: {
+                path: "$contact",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+          ],
+
+          totalCount: [
+            {
+              $count: "total",
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = await Task.aggregate(pipeline);
+
+    const activities = result[0]?.data || [];
+
+    const total = result[0]?.totalCount?.[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+
+      page,
+      limit,
+
+      total,
+
+      totalPages: Math.ceil(total / limit),
+
+      data: activities,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to aggregate activities",
+      error: error.message,
+    });
+  }
+};
 
 export const deleteActivity = async (
   req: AuthRequest,
@@ -228,47 +473,74 @@ export const createActivity = async (
     const { type, data } = req.body;
 
     if (!type || !data) {
-      res
-        .status(400)
-        .json({ success: false, message: "Type and data are required" });
+      res.status(400).json({
+        success: false,
+        message: "Type and data are required",
+      });
       return;
     }
 
     let model;
-    let populateOptions: any = [{ path: "hospital", select: "hospitalName" }];
+
+    let populateOptions: any = [
+      {
+        path: "hospital",
+        select: "hospitalName",
+      },
+    ];
 
     switch (type.toLowerCase()) {
       case "task":
         model = Task;
         break;
+
       case "note":
         model = Notes;
         break;
+
       case "calllog":
         model = CallLogs;
-        populateOptions.push({ path: "contact", select: "firstName" });
+
+        // ✅ Contact populate only if contact exists
+        if (data.contact && data.contact !== "") {
+          populateOptions.push({
+            path: "contact",
+            select: "firstName lastName",
+          });
+        }
+
         break;
+
       default:
-        res
-          .status(400)
-          .json({ success: false, message: "Invalid activity type" });
+        res.status(400).json({
+          success: false,
+          message: "Invalid activity type",
+        });
         return;
     }
 
-    // Add user ID to the data
-    const activityData = {
+    // ✅ Activity Data
+    const activityData: any = {
       ...data,
       user: (req as any).user?._id,
     };
 
-    // ✅ Check for mentions in 'note', 'comment', or 'taskName'
+    // ✅ Remove empty contact field
+    if (
+      type.toLowerCase() === "calllog" &&
+      (!activityData.contact || activityData.contact === "")
+    ) {
+      delete activityData.contact;
+    }
+
+    // ✅ Mention detection
     const textToSearch = data.notes || data.note || data.taskName || "";
+
     const mentions = textToSearch.match(/@([A-Za-z]+\s[A-Za-z]+)/g) || [];
+
     const cleanedMentions = mentions.map((m: string) =>
       m.replace("@", "").trim().toLowerCase(),
     );
-
-    // console.log(cleanedMentions, "000000000000000000");
 
     if (cleanedMentions.length > 0) {
       try {
@@ -280,31 +552,50 @@ export const createActivity = async (
           },
         });
 
-        // console.log(validUsers, "validUsersvalidUsers");
-
         const mentionedHospital = data.hospital;
 
         if (validUsers.length > 0) {
           const userIds = validUsers.map((u) => u._id.toString());
+
           await sendPushToUsers(userIds, {
             title: `${(req as any).user?.name} mentioned you in a ${type}`,
+
             message: textToSearch,
+
             url: `${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}`,
           });
 
-          // ✅ Send Email Notifications
+          // ✅ Email Notifications
           for (const user of validUsers) {
             if (user.email && (req as any).user?.email) {
               sendGraphEmail(
                 (req as any).user.email,
+
                 user.email,
+
                 `${(req as any).user.name} mentioned you in a ${type}`,
+
                 `<p>Hello ${user.name},</p>
-                 <p><strong>${(req as any).user.name}</strong> mentioned you in a <strong>${type}</strong>:</p>
+
+                 <p>
+                   <strong>${
+                     (req as any).user.name
+                   }</strong> mentioned you in a 
+                   <strong>${type}</strong>:
+                 </p>
+
                  <blockquote style="border-left: 4px solid #ccc; padding-left: 10px; margin: 10px 0;">
                    ${textToSearch}
                  </blockquote>
-                 <p>You can view it here: <a href="${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}">${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}</a></p>`
+
+                 <p>
+                   You can view it here:
+                   <a href="${
+                     process.env.FRONTEND_URL
+                   }/hospitals/${mentionedHospital}">
+                     ${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}
+                   </a>
+                 </p>`,
               ).catch((err) =>
                 console.error(`Failed to send email to ${user.email}`, err),
               );
@@ -316,8 +607,11 @@ export const createActivity = async (
       }
     }
 
+    // ✅ Create Activity
     const newActivity = new (model as any)(activityData);
+
     await newActivity.save();
+
     await newActivity.populate(populateOptions);
 
     res.status(201).json({

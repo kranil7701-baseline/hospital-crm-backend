@@ -212,7 +212,7 @@ export const createHospital = async (
   try {
     const hospitalData = {
       ...req.body,
-      user: req.user?._id,
+      user: req.body.userId || req.body.user || req.user?._id,
     };
 
     const hospital = new Hospital(hospitalData);

@@ -370,7 +370,7 @@ export const createDeal = async (
 
     const dealsToInsert = products.map((product: any) => ({
       ...rest,
-      user: req.user?._id,
+      user: rest.userId || req.body.userId || req.body.user || req.user?._id,
       products: [{ ...product, beds: beds ? Number(beds) : 0 }], // only ONE product per document
     }));
 
@@ -771,6 +771,7 @@ export const updateDeal = async (
   }
 };
 
+/*
 export const getDashboardStats = async (
   req: AuthRequest,
   res: Response,
@@ -934,6 +935,211 @@ export const getDashboardStats = async (
 
         closedBusiness: {
           totalAmount: data?.closedBusinessRaw?.[0]?.totalAmount || 0,
+          hospitalCount: data?.closedBusinessRaw?.[0]?.hospitalCount || 0,
+        },
+
+        pipeline,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard stats",
+      error: error.message,
+    });
+  }
+};
+*/
+
+export const getDashboardStats = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
+    const objectUserId = new mongoose.Types.ObjectId(userId);
+
+    // 🔥 Check if Admin or Executive
+    const isAdminOrExecutive = userRole === "Admin" || userRole === "Executive";
+
+    // =========================
+    // 🔥 DEAL FILTER
+    // =========================
+    const dealMatchFilter = isAdminOrExecutive ? {} : { user: objectUserId };
+
+    // =========================
+    // 🔥 GET HOSPITAL IDS
+    // =========================
+    const userDeals = await Deal.find(dealMatchFilter, "hospital").lean();
+
+    const matchedHospitalIds = userDeals
+      .map((d: any) => d.hospital)
+      .filter((id: any) => id != null);
+
+    // =========================
+    // 🔥 HOSPITAL FILTER
+    // =========================
+    const hospitalFilter = isAdminOrExecutive
+      ? {}
+      : {
+          $or: [{ user: objectUserId }, { _id: { $in: matchedHospitalIds } }],
+        };
+
+    // =========================
+    // 🔥 BASIC COUNTS
+    // =========================
+    const [totalHospitals, totalHospitalsInDB, totalProductsInDB] =
+      await Promise.all([
+        Hospital.countDocuments(hospitalFilter),
+
+        Hospital.countDocuments({}),
+
+        Product.countDocuments({}),
+      ]);
+
+    // =========================
+    // 🔥 STAGES MASTER
+    // =========================
+    const stages = [
+      "Demo",
+      "CPA",
+      "Committee",
+      "Trial",
+      "Pending Decision",
+      "Closed Won",
+      "Implemented",
+    ];
+
+    // =========================
+    // 🔥 AGGREGATION
+    // =========================
+    const result = await Deal.aggregate([
+      { $match: dealMatchFilter },
+
+      { $unwind: "$products" },
+
+      {
+        $facet: {
+          // ================= TOTALS =================
+          totals: [
+            {
+              $group: {
+                _id: null,
+
+                totalPipelineAmount: {
+                  $sum: "$products.dealAmount",
+                },
+
+                activeDealsCount: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ["$products.stage", "Closed Won"] },
+                          { $ne: ["$products.stage", "Implemented"] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+
+          // ================= PIPELINE =================
+          pipelineRaw: [
+            {
+              $group: {
+                _id: "$products.stage",
+                amount: { $sum: "$products.dealAmount" },
+                hospitals: { $addToSet: "$hospital" },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                stage: "$_id",
+                amount: 1,
+                hospitalCount: { $size: "$hospitals" },
+              },
+            },
+          ],
+
+          // ================= CLOSED BUSINESS =================
+          closedBusinessRaw: [
+            {
+              $match: {
+                "products.stage": {
+                  $in: ["Closed Won", "Implemented"],
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalAmount: {
+                  $sum: "$products.dealAmount",
+                },
+                hospitals: {
+                  $addToSet: "$hospital",
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                totalAmount: 1,
+                hospitalCount: {
+                  $size: "$hospitals",
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const data = result[0];
+
+    // =========================
+    // 🔥 PIPELINE MAP
+    // =========================
+    const pipelineMap = new Map<string, any>(
+      (data?.pipelineRaw || []).map((p: any) => [p.stage, p]),
+    );
+
+    const pipeline = stages.map((stage) => ({
+      stage,
+      amount: pipelineMap.get(stage)?.amount || 0,
+      hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0,
+    }));
+
+    // =========================
+    // 🔥 FINAL RESPONSE
+    // =========================
+    res.status(200).json({
+      success: true,
+      data: {
+        totalHospitals,
+        totalHospitalsInDB,
+        totalProductsInDB,
+
+        activeDeals: data?.totals?.[0]?.activeDealsCount || 0,
+
+        totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
+
+        closedBusiness: {
+          totalAmount: data?.closedBusinessRaw?.[0]?.totalAmount || 0,
+
           hospitalCount: data?.closedBusinessRaw?.[0]?.hospitalCount || 0,
         },
 
