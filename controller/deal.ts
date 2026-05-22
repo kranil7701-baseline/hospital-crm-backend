@@ -8,6 +8,7 @@ import Task from "../model/Task.ts";
 import Notes from "../model/Notes.ts";
 import CallLog from "../model/CallLogs.ts";
 import { UserRole } from "../model/User.ts";
+import Contact from "../model/Contact.ts";
 
 export const getDeals = async (
   req: AuthRequest,
@@ -171,8 +172,8 @@ export const getDeals = async (
                   name: "$products.product.name",
                 },
                 dealAmount: "$products.dealAmount",
-                // quantity: "$products.quantity",
-                // beds: "$products.beds",
+                quantity: "$products.quantity",
+                beds: "$products.beds",
                 stage: "$products.stage",
                 user: {
                   _id: "$user._id",
@@ -377,75 +378,6 @@ export const createDeal = async (
     });
   }
 };
-
-/*
-export const updateDealProductStage = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  try {
-    const { dealId, productId, stage } = req.body;
-
-    // ✅ Validation
-    if (!dealId || !productId || !stage) {
-      res.status(400).json({
-        success: false,
-        message: "dealId, productId and stage are required",
-      });
-      return;
-    }
-
-    // ✅ Validate ObjectIds
-    if (
-      !mongoose.Types.ObjectId.isValid(dealId) ||
-      !mongoose.Types.ObjectId.isValid(productId)
-    ) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid ObjectId(s)",
-      });
-      return;
-    }
-
-    // ✅ Update stage (no hospital filter)
-    const updatedDeal = await Deal.findOneAndUpdate(
-      {
-        _id: new mongoose.Types.ObjectId(dealId),
-        "products.product": new mongoose.Types.ObjectId(productId),
-      },
-      {
-        $set: {
-          "products.$.stage": stage,
-        },
-      },
-      {
-        new: true,
-        runValidators: true,
-      },
-    );
-
-    if (!updatedDeal) {
-      res.status(404).json({
-        success: false,
-        message: "Deal or product not found",
-      });
-      return;
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Stage updated successfully",
-      data: updatedDeal,
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update stage",
-      error: error.message,
-    });
-  }
-};
-*/
 
 export const updateDealProductStage = async (
   req: AuthRequest,
@@ -654,6 +586,7 @@ export const addProductToDeal = async (
   }
 };
 
+/*
 export const updateDeal = async (
   req: AuthRequest,
   res: Response,
@@ -758,186 +691,127 @@ export const updateDeal = async (
     });
   }
 };
+*/
 
-/*
-export const getDashboardStats = async (
+export const updateDeal = async (
   req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
-    const userId = req.user?._id;
+    const {
+      dealId,
+      dealAmount,
+      quantity,
+      stage,
+      expectedCloseDate,
+      dealDate,
+      userId,
+      beds,
+      notes,
+    } = req.body;
 
-    if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!dealId) {
+      res.status(400).json({
+        success: false,
+        message: "dealId is required",
+      });
       return;
     }
 
-    const objectUserId = new mongoose.Types.ObjectId(userId);
+    // find deal
+    const deal = await Deal.findById(dealId);
 
-    // Get all unique hospital IDs associated with deals where deal.user === objectUserId
-    const userDeals = await Deal.find(
-      { user: objectUserId },
-      "hospital",
-    ).lean();
-    const matchedHospitalIds = userDeals
-      .map((d: any) => d.hospital)
-      .filter((id: any) => id != null);
+    if (!deal) {
+      res.status(404).json({
+        success: false,
+        message: "Deal not found",
+      });
+      return;
+    }
 
-    // =========================
-    // 🔥 BASIC COUNTS
-    // =========================
-    const [totalHospitals, totalHospitalsInDB, totalProductsInDB] =
-      await Promise.all([
-        Hospital.countDocuments({
-          $or: [{ user: objectUserId }, { _id: { $in: matchedHospitalIds } }],
-        }),
-        Hospital.countDocuments({}),
-        Product.countDocuments({}),
-      ]);
+    // authorization check
+    const isAdmin = req.user?.role === UserRole.ADMIN;
 
-    // =========================
-    // 🔥 STAGES MASTER
-    // =========================
-    const stages = [
-      "Demo",
-      "CPA",
-      "Committee",
-      "Trial",
-      "Pending Decision",
-      "Closed Won",
-      "Implemented",
-    ];
+    if (!isAdmin && deal.user.toString() !== req.user?._id.toString()) {
+      res.status(403).json({
+        success: false,
+        message: "You are not authorized to update this deal",
+      });
+      return;
+    }
 
-    // =========================
-    // 🔥 AGGREGATION
-    // =========================
-    const result = await Deal.aggregate([
-      { $match: { user: objectUserId } },
-      { $unwind: "$products" },
+    const updateFields: any = {};
 
+    // update product fields
+    if (dealAmount !== undefined) {
+      updateFields["products.0.dealAmount"] = Number(dealAmount);
+    }
+
+    if (quantity !== undefined) {
+      updateFields["products.0.quantity"] = Number(quantity);
+    }
+
+    if (beds !== undefined) {
+      updateFields["products.0.beds"] = Number(beds);
+    }
+
+    if (stage) {
+      updateFields["products.0.stage"] = stage;
+    }
+
+    if (expectedCloseDate) {
+      updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
+    }
+
+    if (dealDate) {
+      updateFields["products.0.dealDate"] = dealDate;
+    }
+
+    // notes
+    if (notes !== undefined) {
+      updateFields.notes = notes;
+    }
+
+    // only admin can change assigned user
+    if (userId) {
+      if (!isAdmin) {
+        res.status(403).json({
+          success: false,
+          message: "Only admin can change assigned user",
+        });
+        return;
+      }
+
+      updateFields.user = userId;
+    }
+
+    const updatedDeal = await Deal.findByIdAndUpdate(
+      dealId,
       {
-        $facet: {
-          // ================= TOTALS =================
-          totals: [
-            {
-              $group: {
-                _id: null,
-
-                totalPipelineAmount: {
-                  $sum: "$products.dealAmount",
-                },
-
-                // ================= ACTIVE DEALS =================
-                activeDealsCount: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $and: [
-                          { $ne: ["$products.stage", "Closed Won"] },
-                          { $ne: ["$products.stage", "Implemented"] },
-                        ],
-                      },
-                      1,
-                      0,
-                    ],
-                  },
-                },
-              },
-            },
-          ],
-
-          // ================= PIPELINE =================
-          pipelineRaw: [
-            {
-              $group: {
-                _id: "$products.stage",
-                amount: { $sum: "$products.dealAmount" },
-                hospitals: { $addToSet: "$hospital" },
-              },
-            },
-            {
-              $project: {
-                _id: 0,
-                stage: "$_id",
-                amount: 1,
-                hospitalCount: { $size: "$hospitals" },
-              },
-            },
-          ],
-
-          // ================= CLOSED BUSINESS =================
-          closedBusinessRaw: [
-            {
-              $match: {
-                "products.stage": { $in: ["Closed Won", "Implemented"] },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalAmount: { $sum: "$products.dealAmount" },
-                hospitals: { $addToSet: "$hospital" },
-              },
-            },
-            {
-              $project: {
-                _id: 0,
-                totalAmount: 1,
-                hospitalCount: { $size: "$hospitals" },
-              },
-            },
-          ],
-        },
+        $set: updateFields,
       },
-    ]);
+      {
+        new: true,
+        runValidators: true,
+      },
+    )
+      .populate("hospital", "hospitalName")
+      .populate("user", "name email")
+      .populate("products.product", "name");
 
-    const data = result[0];
-
-    // =========================
-    // 🔥 PIPELINE MAP
-    // =========================
-    const pipelineMap = new Map<string, any>(
-      (data?.pipelineRaw || []).map((p: any) => [p.stage, p]),
-    );
-
-    const pipeline = stages.map((stage) => ({
-      stage,
-      amount: pipelineMap.get(stage)?.amount || 0,
-      hospitalCount: pipelineMap.get(stage)?.hospitalCount || 0,
-    }));
-
-    // =========================
-    // 🔥 FINAL RESPONSE
-    // =========================
     res.status(200).json({
       success: true,
-      data: {
-        totalHospitals,
-        totalHospitalsInDB,
-        totalProductsInDB,
-
-        // 🔥 NEW
-        activeDeals: data?.totals?.[0]?.activeDealsCount || 0,
-
-        totalPipelineAmount: data?.totals?.[0]?.totalPipelineAmount || 0,
-
-        closedBusiness: {
-          totalAmount: data?.closedBusinessRaw?.[0]?.totalAmount || 0,
-          hospitalCount: data?.closedBusinessRaw?.[0]?.hospitalCount || 0,
-        },
-
-        pipeline,
-      },
+      message: "Deal updated successfully",
+      data: updatedDeal,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      message: "Failed to fetch dashboard stats",
+      message: "Failed to update deal",
       error: error.message,
     });
   }
 };
-*/
 
 export const getDashboardStats = async (
   req: AuthRequest,
@@ -1484,6 +1358,39 @@ export const HospitalProductCount = async (
       success: false,
       message: "Failed to fetch hospital and product count",
       error: error.message,
+    });
+  }
+};
+
+export const DealsTesting = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const deals = await Deal.aggregate([
+      {
+        $unwind: "$products",
+      },
+
+      {
+        $project: {
+          _id: 0,
+          dealid: "$_id",
+          hospitalid: "$hospital",
+          productid: "$products.product",
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: deals.length,
+      data: deals,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

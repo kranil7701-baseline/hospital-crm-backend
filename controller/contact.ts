@@ -4,110 +4,6 @@ import Contact from "../model/Contact.ts";
 import mongoose from "mongoose";
 
 /*
-export const getContacts = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
-    const userId = req.query.userId as string;
-    const productId = req.query.productId as string;
-
-    const skip = (page - 1) * limit;
-    const matchStage: any = {};
-
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      matchStage.user = new mongoose.Types.ObjectId(userId);
-    }
-
-    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      matchStage["hospitalDeals.products.product"] = new mongoose.Types.ObjectId(productId);
-    }
-
-    if (search) {
-      matchStage.$or = [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { designation: { $regex: search, $options: "i" } },
-        { "hospital.hospitalName": { $regex: search, $options: "i" } }
-      ];
-    }
-
-    const pipeline: any[] = [
-      {
-        $lookup: {
-          from: "hospitals",
-          localField: "hospital",
-          foreignField: "_id",
-          as: "hospital"
-        }
-      },
-      { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "deals",
-          localField: "hospital._id",
-          foreignField: "hospital",
-          as: "hospitalDeals"
-        }
-      },
-      {
-        $lookup: {
-          from: "idns",
-          localField: "hospital.idn",
-          foreignField: "_id",
-          as: "hospital.idn"
-        }
-      },
-      { $unwind: { path: "$hospital.idn", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "gpos",
-          localField: "hospital.gpo",
-          foreignField: "_id",
-          as: "hospital.gpo"
-        }
-      },
-      { $unwind: { path: "$hospital.gpo", preserveNullAndEmptyArrays: true } },
-      { $match: matchStage },
-      { $sort: { firstName: 1, lastName: 1 } },
-      {
-        $facet: {
-          data: [
-            { $skip: skip },
-            { $limit: limit }
-          ],
-          totalCount: [
-            { $count: "total" }
-          ]
-        }
-      }
-    ];
-
-    const result = await Contact.aggregate(pipeline);
-    const contacts = result[0]?.data || [];
-    const total = result[0]?.totalCount[0]?.total || 0;
-
-    res.status(200).json({
-      success: true,
-      page,
-      limit,
-      totalContacts: total,
-      totalPages: Math.ceil(total / limit),
-      hasMore: total > skip + contacts.length,
-      data: contacts
-    });
-
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve contacts",
-      error: error.message
-    });
-  }
-};
-*/
-
 export const getContacts = async (
   req: Request,
   res: Response,
@@ -127,9 +23,11 @@ export const getContacts = async (
       matchStage.user = new mongoose.Types.ObjectId(userId);
     }
 
+    // product is now array in contacts model
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      matchStage["hospitalDeals.products.product"] =
-        new mongoose.Types.ObjectId(productId);
+      matchStage.product = {
+        $in: [new mongoose.Types.ObjectId(productId)],
+      };
     }
 
     if (search) {
@@ -144,6 +42,7 @@ export const getContacts = async (
     }
 
     const pipeline: any[] = [
+      // hospital
       {
         $lookup: {
           from: "hospitals",
@@ -160,15 +59,7 @@ export const getContacts = async (
         },
       },
 
-      {
-        $lookup: {
-          from: "deals",
-          localField: "hospital._id",
-          foreignField: "hospital",
-          as: "hospitalDeals",
-        },
-      },
-
+      // idn
       {
         $lookup: {
           from: "idns",
@@ -185,17 +76,7 @@ export const getContacts = async (
         },
       },
 
-      // Lookup product (optional) to include product details on contact
-      {
-        $lookup: {
-          from: "products",
-          localField: "product",
-          foreignField: "_id",
-          as: "productDoc",
-        },
-      },
-      { $unwind: { path: "$productDoc", preserveNullAndEmptyArrays: true } },
-
+      // gpo
       {
         $lookup: {
           from: "gpos",
@@ -212,14 +93,24 @@ export const getContacts = async (
         },
       },
 
+      // product lookup from contacts.product array
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "productDocs",
+        },
+      },
+
       {
         $match: matchStage,
       },
 
-      // Send only required fields (exclude contact _id, createdAt, updatedAt, and id ids)
       {
         $project: {
           _id: 0,
+
           firstName: 1,
           lastName: 1,
           email: 1,
@@ -228,10 +119,15 @@ export const getContacts = async (
           mobile: 1,
           user: 1,
 
-          // include product details if present
           product: {
-            _id: "$productDoc._id",
-            name: "$productDoc.name",
+            $map: {
+              input: "$productDocs",
+              as: "prod",
+              in: {
+                _id: "$$prod._id",
+                name: "$$prod.name",
+              },
+            },
           },
 
           hospital: {
@@ -284,6 +180,117 @@ export const getContacts = async (
       success: false,
       message: "Failed to retrieve contacts",
       error: error.message,
+    });
+  }
+};
+*/
+
+export const getContacts = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const search = (req.query.search as string) || "";
+    const userId = req.query.userId as string;
+    const productId = req.query.productId as string;
+
+    const skip = (page - 1) * limit;
+
+    const filter: any = {};
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      filter.user = userId;
+    }
+
+    // product is array
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      filter.product = productId;
+    }
+
+    if (search) {
+      filter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { designation: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const contacts = await Contact.find(filter)
+      .select("-createdAt -updatedAt -__v -_id -product -isPrimary")
+      .populate({
+        path: "hospital",
+        select: "hospitalName gpo idn",
+        populate: [
+          {
+            path: "gpo",
+            select: "name -_id",
+          },
+          {
+            path: "idn",
+            select: "name -_id",
+          },
+        ],
+      })
+      // .populate({
+      //   path: "product",
+      //   select: "name -_id",
+      // })
+      .sort({
+        firstName: 1,
+        lastName: 1,
+      })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await Contact.countDocuments(filter);
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalContacts: total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: total > skip + contacts.length,
+      data: contacts,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve contacts",
+      error: error.message,
+    });
+  }
+};
+
+export const ContactsTesting = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const contacts = await Contact.aggregate([
+      {
+        $project: {
+          _id: 0,
+          contactid: "$_id",
+          hospitalid: "$hospital",
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: contacts.length,
+      data: contacts,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

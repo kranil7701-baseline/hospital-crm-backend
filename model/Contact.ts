@@ -6,7 +6,7 @@ export interface IContact extends Document {
   user: mongoose.Types.ObjectId;
   designation: string;
   hospital: mongoose.Types.ObjectId;
-  product?: mongoose.Types.ObjectId;
+  product?: mongoose.Types.ObjectId[];
   phoneNumber: string;
   email: string;
   isPrimary: boolean;
@@ -38,10 +38,12 @@ const ContactSchema: Schema = new Schema(
       ref: "Hospital",
       required: true,
     },
-    product: {
-      type: Schema.Types.ObjectId,
-      ref: "Product",
-    },
+    product: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Product",
+      },
+    ],
     phoneNumber: {
       type: String,
       required: true,

@@ -1086,7 +1086,7 @@ export const getAllHospitalsDeals = async (
     });
   }
 };
-*/  
+*/
 
 export const getAllHospitalsDeals = async (
   req: AuthRequest,
@@ -1102,7 +1102,7 @@ export const getAllHospitalsDeals = async (
     const productStage = req.query.productStage as string;
 
     let filterUserId: mongoose.Types.ObjectId | null = null;
-    const isAdmin = req.user?.role === "Admin"; // Assuming "Admin" is the string
+    const isAdmin = req.user?.role === "Admin";
 
     if (isAdmin) {
       if (reqUserId && mongoose.Types.ObjectId.isValid(reqUserId)) {
@@ -1117,12 +1117,16 @@ export const getAllHospitalsDeals = async (
     }
 
     let matchedHospitalIds: mongoose.Types.ObjectId[] = [];
+
     if (filterUserId) {
       const dealQuery: any = { user: filterUserId };
+
       if (productStage) {
         dealQuery["products.stage"] = productStage;
       }
+
       const userDeals = await Deal.find(dealQuery, "hospital").lean();
+
       matchedHospitalIds = userDeals
         .map((d: any) => d.hospital)
         .filter((id: any) => id != null);
@@ -1134,10 +1138,7 @@ export const getAllHospitalsDeals = async (
     if (filterUserId) {
       pipeline.push({
         $match: {
-          $or: [
-            { user: filterUserId },
-            { _id: { $in: matchedHospitalIds } },
-          ],
+          $or: [{ user: filterUserId }, { _id: { $in: matchedHospitalIds } }],
         },
       });
     }
@@ -1166,6 +1167,7 @@ export const getAllHospitalsDeals = async (
 
           {
             $project: {
+              _id: 0,
               products: 1,
               user: 1,
             },
@@ -1214,15 +1216,27 @@ export const getAllHospitalsDeals = async (
         from: "idns",
         let: { idnId: "$idn" },
         pipeline: [
-          { $match: { $expr: { $eq: ["$_id", "$$idnId"] } } },
-          { $project: { name: 1, user: 1 } },
+          {
+            $match: {
+              $expr: { $eq: ["$_id", "$$idnId"] },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              name: 1,
+            },
+          },
         ],
         as: "idn",
       },
     });
 
     pipeline.push({
-      $unwind: { path: "$idn", preserveNullAndEmptyArrays: true },
+      $unwind: {
+        path: "$idn",
+        preserveNullAndEmptyArrays: true,
+      },
     });
 
     // ================= GPO =================
@@ -1231,15 +1245,27 @@ export const getAllHospitalsDeals = async (
         from: "gpos",
         let: { gpoId: "$gpo" },
         pipeline: [
-          { $match: { $expr: { $eq: ["$_id", "$$gpoId"] } } },
-          { $project: { name: 1, user: 1 } },
+          {
+            $match: {
+              $expr: { $eq: ["$_id", "$$gpoId"] },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              name: 1,
+            },
+          },
         ],
         as: "gpo",
       },
     });
 
     pipeline.push({
-      $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true },
+      $unwind: {
+        path: "$gpo",
+        preserveNullAndEmptyArrays: true,
+      },
     });
 
     // ================= PRODUCTS =================
@@ -1252,7 +1278,7 @@ export const getAllHospitalsDeals = async (
       },
     });
 
-    // ================= MAP PRODUCT NAMES =================
+    // ================= MAP PRODUCTS =================
     pipeline.push({
       $addFields: {
         deals: {
@@ -1268,31 +1294,31 @@ export const getAllHospitalsDeals = async (
                       input: { $ifNull: ["$$deal.products", []] },
                       as: "prod",
                       in: {
-                        $mergeObjects: [
-                          "$$prod",
-                          {
-                            product: {
-                              $arrayElemAt: [
-                                {
-                                  $map: {
-                                    input: {
-                                      $filter: {
-                                        input: "$productsData",
-                                        as: "p",
-                                        cond: {
-                                          $eq: ["$$p._id", "$$prod.product"],
-                                        },
-                                      },
+                        product: {
+                          $arrayElemAt: [
+                            {
+                              $map: {
+                                input: {
+                                  $filter: {
+                                    input: "$productsData",
+                                    as: "p",
+                                    cond: {
+                                      $eq: ["$$p._id", "$$prod.product"],
                                     },
-                                    as: "m",
-                                    in: "$$m.name",
                                   },
                                 },
-                                0,
-                              ],
+                                as: "m",
+                                in: "$$m.name",
+                              },
                             },
-                          },
-                        ],
+                            0,
+                          ],
+                        },
+
+                        dealAmount: "$$prod.dealAmount",
+                        stage: "$$prod.stage",
+                        expectedCloseDate: "$$prod.expectedCloseDate",
+                        dealDate: "$$prod.dealDate",
                       },
                     },
                   },
@@ -1460,4 +1486,4 @@ export const getAllHospitalsDeals = async (
       error: error.message,
     });
   }
-};;
+};
