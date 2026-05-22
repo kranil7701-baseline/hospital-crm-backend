@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema } from "mongoose";
 
 export interface IContact extends Document {
   firstName: string;
@@ -6,6 +6,7 @@ export interface IContact extends Document {
   user: mongoose.Types.ObjectId;
   designation: string;
   hospital: mongoose.Types.ObjectId;
+  product?: mongoose.Types.ObjectId;
   phoneNumber: string;
   email: string;
   isPrimary: boolean;
@@ -13,54 +14,60 @@ export interface IContact extends Document {
   updatedAt: Date;
 }
 
-const ContactSchema: Schema = new Schema({
-  firstName: {
-    type: String,
-    required: true,
-    trim: true,
-    index: true
+const ContactSchema: Schema = new Schema(
+  {
+    firstName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    lastName: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    designation: {
+      type: String,
+      // required: true,
+      trim: true,
+    },
+    hospital: {
+      type: Schema.Types.ObjectId,
+      ref: "Hospital",
+      required: true,
+    },
+    product: {
+      type: Schema.Types.ObjectId,
+      ref: "Product",
+    },
+    phoneNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+    },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      // required: true
+    },
+    isPrimary: {
+      type: Boolean,
+      default: false,
+    },
   },
-  lastName: {
-    type: String,
-    required: true,
-    trim: true,
-    index: true
+  {
+    timestamps: true,
   },
-  designation: {
-    type: String,
-    // required: true,
-    trim: true
-  },
-  hospital: {
-    type: Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
-  },
-  phoneNumber: {
-    type: String,
-    required: true,
-     unique: true,
-    trim: true
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    lowercase: true,
-  },
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    // required: true
-  },
-  isPrimary: {
-    type: Boolean,
-    default: false
-  }
-}, {
-  timestamps: true
-});
+);
 
-
-export default mongoose.model<IContact>('Contact', ContactSchema);
+export default mongoose.model<IContact>("Contact", ContactSchema);

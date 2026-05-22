@@ -27,6 +27,7 @@ export const getUsers = async (
 
     // Fetch users
     const users = await User.find(searchQuery)
+      .select("-email -role -createdAt -updatedAt -__v")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -78,6 +79,7 @@ export const getUsersAdmin = async (
 
     // Fetch users
     const users = await User.find(searchQuery)
+      .select("-createdAt -updatedAt -__v")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

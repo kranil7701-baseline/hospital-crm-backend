@@ -38,16 +38,10 @@ export const getDeals = async (
 
     const matchStage: any = {};
 
-    // =========================
-    // 🔥 USER FILTER
-    // =========================
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       matchStage.user = new mongoose.Types.ObjectId(userId);
     }
 
-    // =========================
-    // 🔥 MAIN PIPELINE
-    // =========================
     const pipeline: any[] = [
       { $match: matchStage },
 
@@ -58,7 +52,6 @@ export const getDeals = async (
         },
       },
 
-      // 🔥 PRODUCT FILTER
       ...(productIds.length > 0
         ? [
             {
@@ -69,7 +62,6 @@ export const getDeals = async (
           ]
         : []),
 
-      // 🔥 ENRICH WITH HOSPITAL (Needed for search & GPO filtering)
       {
         $lookup: {
           from: "hospitals",
@@ -80,7 +72,6 @@ export const getDeals = async (
       },
       { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
 
-      // 🔥 GPO FILTER (on hospital.gpo instead of deal.gpo to cover all deals correctly as GPO is hospital-centric)
       ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
         ? [
             {
@@ -91,7 +82,6 @@ export const getDeals = async (
           ]
         : []),
 
-      // 🔥 SEARCH FILTER
       ...(searchQuery
         ? [
             {
@@ -112,9 +102,6 @@ export const getDeals = async (
 
       {
         $facet: {
-          // =========================
-          // DEALS DATA
-          // =========================
           deals: [
             {
               $lookup: {
@@ -178,10 +165,14 @@ export const getDeals = async (
                     name: "$gpo.name",
                   },
                 },
-                product: "$products.product",
+                // product: "$products.product",
+                product: {
+                  _id: "$products.product._id",
+                  name: "$products.product.name",
+                },
                 dealAmount: "$products.dealAmount",
-                quantity: "$products.quantity",
-                beds: "$products.beds",
+                // quantity: "$products.quantity",
+                // beds: "$products.beds",
                 stage: "$products.stage",
                 user: {
                   _id: "$user._id",
@@ -210,7 +201,18 @@ export const getDeals = async (
                 "products.stage": { $in: ["Closed Won", "Implemented"] },
               },
             },
-            { $count: "count" },
+            {
+              $group: {
+                _id: null,
+                amount: { $sum: "$products.dealAmount" },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                amount: 1,
+              },
+            },
           ],
         },
       },
@@ -221,7 +223,7 @@ export const getDeals = async (
     const deals = result[0]?.deals || [];
     const totalDealsCount = result[0]?.totalDealsCount[0]?.count || 0;
     const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
-    const closedBusiness = result[0]?.closedBusiness[0]?.count || 0;
+    const closedBusiness = result[0]?.closedBusiness[0]?.amount || 0;
 
     const productRevenue = await Product.aggregate([
       {
@@ -239,8 +241,6 @@ export const getDeals = async (
                   },
                 ]
               : []),
-
-            // 🔥 lookup hospital to check its GPO
             {
               $lookup: {
                 from: "hospitals",
@@ -251,7 +251,6 @@ export const getDeals = async (
             },
             { $unwind: "$hospitalDoc" },
 
-            // 🔥 GPO FILTER (on hospitalDoc.gpo instead of deal.gpo)
             ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
                   {
@@ -263,8 +262,6 @@ export const getDeals = async (
               : []),
 
             { $unwind: "$products" },
-
-            // 🔥 PRODUCT MATCH
             {
               $match: {
                 $expr: {
@@ -276,27 +273,18 @@ export const getDeals = async (
           as: "dealData",
         },
       },
-
-      // =========================
-      // 🔥 ARR LOGIC (UPDATED)
-      // =========================
       {
         $addFields: {
           ARR: {
             $cond: [
-              // if productIds are passed → only those products get real revenue
               productIds.length > 0
                 ? {
                     $in: ["$_id", productIds],
                   }
                 : true,
-
-              // true case → sum revenue
               {
                 $sum: "$dealData.products.dealAmount",
               },
-
-              // false case → force 0
               0,
             ],
           },
@@ -322,7 +310,7 @@ export const getDeals = async (
       limit: limit || totalDealsCount,
       totalPages: limit ? Math.ceil(totalDealsCount / limit) : 1,
       totalHospitals,
-      closedBusiness,
+      closedBusiness: closedBusiness,
       productRevenue,
       data: deals,
     });

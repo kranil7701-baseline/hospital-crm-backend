@@ -49,10 +49,10 @@ export const getIDNs = async (req: Request, res: Response): Promise<void> => {
 
     // Fetch IDNs
     const idns = await IDN.find(searchQuery)
+      .select("-createdAt -updatedAt -__v -hospitals")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .populate("hospitals");
+      .limit(limit);
 
     const total = await IDN.countDocuments(searchQuery);
 
@@ -569,14 +569,6 @@ export const getAllIDNsDeals = async (
                     },
               },
             },
-            // {
-            //   $lookup: {
-            //     from: "gpos",
-            //     localField: "gpo",
-            //     foreignField: "_id",
-            //     as: "gpo",
-            //   },
-            // },
             {
               $lookup: {
                 from: "gpos",
@@ -589,12 +581,6 @@ export const getAllIDNsDeals = async (
                   },
                   {
                     $project: {
-                      // hospitals: 0,
-                      // createdAt: 0,
-                      // updatedAt: 0,
-                      // user: 0,
-                      // __v: 0,
-                      // _id: 0,
                       name: 1,
                       _id: 0,
                     },
@@ -801,7 +787,9 @@ export const getAllIDNsDeals = async (
       {
         $project: {
           deals: 0,
-          hospitalIds: 0,
+          createdAt: 0,
+          updatedAt: 0,
+          __v: 0,
         },
       },
 

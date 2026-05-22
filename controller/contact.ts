@@ -185,6 +185,17 @@ export const getContacts = async (
         },
       },
 
+      // Lookup product (optional) to include product details on contact
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "productDoc",
+        },
+      },
+      { $unwind: { path: "$productDoc", preserveNullAndEmptyArrays: true } },
+
       {
         $lookup: {
           from: "gpos",
@@ -205,9 +216,10 @@ export const getContacts = async (
         $match: matchStage,
       },
 
-      // Send only required fields
+      // Send only required fields (exclude contact _id, createdAt, updatedAt, and id ids)
       {
         $project: {
+          _id: 0,
           firstName: 1,
           lastName: 1,
           email: 1,
@@ -215,26 +227,22 @@ export const getContacts = async (
           phoneNumber: 1,
           mobile: 1,
           user: 1,
-          createdAt: 1,
-          updatedAt: 1,
+
+          // include product details if present
+          product: {
+            _id: "$productDoc._id",
+            name: "$productDoc.name",
+          },
 
           hospital: {
             _id: "$hospital._id",
             hospitalName: "$hospital.hospitalName",
-            address: "$hospital.address",
-            city: "$hospital.city",
-            state: "$hospital.state",
-            zip: "$hospital.zip",
-            website: "$hospital.website",
-            phone: "$hospital.phone",
 
             gpo: {
-              _id: "$hospital.gpo._id",
               name: "$hospital.gpo.name",
             },
 
             idn: {
-              _id: "$hospital.idn._id",
               name: "$hospital.idn.name",
             },
           },
@@ -386,13 +394,11 @@ export const deleteContact = async (
       .status(200)
       .json({ success: true, message: "Contact deleted successfully" });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error deleting contact",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error deleting contact",
+      error: error.message,
+    });
   }
 };
 
