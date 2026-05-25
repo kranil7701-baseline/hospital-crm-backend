@@ -35,10 +35,12 @@ import graphAppOnlyRoutes from "./routes/graphAppOnly.ts";
 import pushNotificationRoutes from "./routes/pushNotification.ts";
 import { setupPush } from "./controller/pushNotification.ts";
 import { initDealCron } from "./helper/dealCron.ts";
+import { initTaskCron } from "./helper/taskCron.ts";
 
 const app = express();
 setupPush();
 initDealCron();
+initTaskCron();
 const PORT = Number(process.env.PORT) || 8000;
 
 // ================= CORS =================

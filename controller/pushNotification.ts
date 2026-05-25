@@ -22,6 +22,19 @@ export const setupPush = () => {
   console.log("✅ Push notifications initialized");
 };
 
+const isValidPushSubscription = (subscription: any) => {
+  return (
+    subscription &&
+    typeof subscription.endpoint === "string" &&
+    subscription.endpoint.trim().length > 0 &&
+    subscription.keys &&
+    typeof subscription.keys.p256dh === "string" &&
+    subscription.keys.p256dh.trim().length > 0 &&
+    typeof subscription.keys.auth === "string" &&
+    subscription.keys.auth.trim().length > 0
+  );
+};
+
 // ✅ Subscribe (NOW linked with user)
 export const subscribe = async (req: AuthRequest, res: Response) => {
   try {
@@ -31,12 +44,23 @@ export const subscribe = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
+    if (!isValidPushSubscription(subscription)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid push subscription payload",
+      });
+    }
+
     await PushSubscription.findOneAndUpdate(
       { endpoint: subscription.endpoint },
       {
         $set: {
-          ...subscription,
-          user: req.user._id, // 🔥 IMPORTANT
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.keys.p256dh,
+            auth: subscription.keys.auth,
+          },
+          user: req.user._id,
         },
       },
       { upsert: true, returnDocument: "after" },
@@ -65,10 +89,31 @@ export const unsubscribe = async (req: Request, res: Response) => {
   }
 };
 
+const isPushSubscriptionValid = (subscription: any) => {
+  return (
+    subscription &&
+    typeof subscription.endpoint === "string" &&
+    subscription.endpoint.trim().length > 0 &&
+    subscription.keys &&
+    typeof subscription.keys.p256dh === "string" &&
+    subscription.keys.p256dh.trim().length > 0 &&
+    typeof subscription.keys.auth === "string" &&
+    subscription.keys.auth.trim().length > 0
+  );
+};
+
 // 🔥 Internal helper
 const sendPush = async (subscriptions: any[], payload: string) => {
-  const results = subscriptions.map((sub) =>
-    webPush
+  const results = subscriptions.map((sub) => {
+    if (!isPushSubscriptionValid(sub)) {
+      console.warn(
+        "Skipping invalid push subscription",
+        sub?._id || sub?.endpoint,
+      );
+      return PushSubscription.findByIdAndDelete(sub._id);
+    }
+
+    return webPush
       .sendNotification(
         {
           endpoint: sub.endpoint,
@@ -80,11 +125,11 @@ const sendPush = async (subscriptions: any[], payload: string) => {
         console.error("Push error:", err?.statusCode);
 
         // 🧹 Remove invalid subscriptions
-        if (err.statusCode === 410 || err.statusCode === 404) {
+        if (err?.statusCode === 410 || err?.statusCode === 404) {
           return PushSubscription.findByIdAndDelete(sub._id);
         }
-      }),
-  );
+      });
+  });
 
   await Promise.all(results);
 };

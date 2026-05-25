@@ -789,8 +789,6 @@ export const getReceivedEmailsFromDB = async (
   }
 };
 
-
-
 export const replyToMessage = async (
   req: AuthRequest,
   res: Response,
@@ -921,7 +919,9 @@ export const syncHospitalEmails = async (
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     const formattedDate = threeMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD
 
-    const emailTerms = contactEmails.map((email) => `\\"${email}\\"`).join(" OR ");
+    const emailTerms = contactEmails
+      .map((email) => `\\"${email}\\"`)
+      .join(" OR ");
     const searchQuery = `"(${emailTerms}) AND received>=${formattedDate}"`;
 
     // 4. Fetch messages from Graph API for all users in DB
@@ -982,7 +982,10 @@ export const syncHospitalEmails = async (
           for (const msg of messages) {
             bulkOps.push({
               updateOne: {
-                filter: { graphId: msg.id, hospital: new mongoose.Types.ObjectId(hospitalId) },
+                filter: {
+                  graphId: msg.id,
+                  hospital: new mongoose.Types.ObjectId(hospitalId),
+                },
                 update: {
                   $set: {
                     graphId: msg.id,

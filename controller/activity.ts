@@ -407,6 +407,7 @@ export const getActivities = async (
   }
 };
 
+/*
 export const deleteActivity = async (
   req: AuthRequest,
   res: Response,
@@ -439,7 +440,6 @@ export const deleteActivity = async (
         return;
     }
 
-    // Verify ownership (or existence) before deleting
     const activity = await (model as any).findOneAndDelete({
       _id: new mongoose.Types.ObjectId(id),
       user: (req as any).user?._id,
@@ -456,6 +456,78 @@ export const deleteActivity = async (
     res
       .status(200)
       .json({ success: true, message: `${type} deleted successfully` });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete activity",
+      error: error.message,
+    });
+  }
+};
+*/
+
+export const deleteActivity = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id, type } = req.body;
+
+    if (!id || !type) {
+      res.status(400).json({
+        success: false,
+        message: "ID and type are required",
+      });
+      return;
+    }
+
+    let model;
+
+    switch (type.toLowerCase()) {
+      case "task":
+        model = Task;
+        break;
+
+      case "note":
+        model = Notes;
+        break;
+
+      case "calllog":
+        model = CallLogs;
+        break;
+
+      default:
+        res.status(400).json({
+          success: false,
+          message: "Invalid activity type",
+        });
+        return;
+    }
+
+    // Admin can delete any activity
+    // Other users can delete only their own
+    const query: any = {
+      _id: new mongoose.Types.ObjectId(id),
+    };
+
+    if ((req as any).user?.role !== "Admin") {
+      query.user = (req as any).user?._id;
+    }
+
+    const activity = await (model as any).findOneAndDelete(query);
+
+    if (!activity) {
+      res.status(404).json({
+        success: false,
+        message: "Activity not found or you don't have permission to delete it",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `${type} deleted successfully`,
+    });
   } catch (error: any) {
     res.status(500).json({
       success: false,
