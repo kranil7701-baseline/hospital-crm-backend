@@ -48,23 +48,9 @@ const processMessageAttachments = async (
     let bodyContent = message.body?.content || "";
     let replacedCount = 0;
 
-    console.log(
-      `Processing ${attachments.length} attachments for message ${message.id}`,
-    );
-
-    const cidMatches = bodyContent.match(/cid:[^"'\s>]+/g);
-    if (cidMatches) {
-      console.log(
-        `CIDs found in body for ${message.id}: ${cidMatches.join(", ")}`,
-      );
-    }
-
     // 1. Map all available attachments by their CID and Name for quick lookup
     const attachmentMap = new Map<string, any>();
     attachments.forEach((att: any) => {
-      console.log(
-        `Found attachment: name=${att.name}, contentId=${att.contentId}, hasBytes=${!!att.contentBytes}`,
-      );
       if (att.contentId) {
         const cleanId = att.contentId.replace(/[<>]/g, "");
         attachmentMap.set(cleanId.toLowerCase(), att);
@@ -119,20 +105,10 @@ const processMessageAttachments = async (
       // Extremely permissive regex to find anything that looks like a CID
       const cidMatches = bodyContent.match(/cid:[^"'\s>)]+/gi);
 
-      if (!cidMatches && bodyContent.toLowerCase().includes("cid:")) {
-        console.log(
-          `    * WARNING: 'cid:' string found in body of message ${message.id} but regex failed to match. Check HTML structure.`,
-        );
-      }
-
       if (cidMatches) {
-        console.log(
-          `Analyzing ${cidMatches.length} CIDs for message ${message.id} (${message.subject})`,
-        );
         for (const match of cidMatches) {
           const cidPart = match.replace(/cid:<?/i, "").replace(/>?$/i, "");
           let cleanCid = cidPart.replace(/[<>]/g, "").toLowerCase();
-          console.log(`  - Checking CID: ${cleanCid}`);
 
           // Try direct match in current message
           let att = attachmentMap.get(cleanCid);
@@ -141,28 +117,18 @@ const processMessageAttachments = async (
           if (!att && cleanCid.includes(".")) {
             const baseCid = cleanCid.substring(0, cleanCid.lastIndexOf("."));
             att = attachmentMap.get(baseCid);
-            if (att)
-              console.log(
-                `    * Found match by stripping extension: ${baseCid}`,
-              );
           }
 
           // Try match by stripping everything after @ (common in Outlook)
           if (!att && cleanCid.includes("@")) {
             const prefix = cleanCid.split("@")[0];
             att = attachmentMap.get(prefix);
-            if (att)
-              console.log(`    * Found match by stripping @ suffix: ${prefix}`);
           }
 
           // Try stripping 'ii_' prefix (common in Gmail/Outlook threads)
           if (!att && cleanCid.startsWith("ii_")) {
             const stripped = cleanCid.substring(3);
             att = attachmentMap.get(stripped);
-            if (att)
-              console.log(
-                `    * Found match by stripping 'ii_' prefix: ${stripped}`,
-              );
           }
 
           // Try URL decoding
@@ -170,10 +136,6 @@ const processMessageAttachments = async (
             try {
               const decodedCid = decodeURIComponent(cleanCid);
               att = attachmentMap.get(decodedCid);
-              if (att)
-                console.log(
-                  `    * Found match after URL decoding: ${decodedCid}`,
-                );
             } catch (e) {}
           }
 
@@ -182,7 +144,6 @@ const processMessageAttachments = async (
             for (const [key, value] of attachmentMap.entries()) {
               if (key.includes(cleanCid) || cleanCid.includes(key)) {
                 att = value;
-                console.log(`    * Found fuzzy match: ${key}`);
                 break;
               }
             }
@@ -218,9 +179,6 @@ const processMessageAttachments = async (
                   (a.name && a.name.toLowerCase() === cleanCid),
               );
               if (batchAtt && batchAtt.fileUrl) {
-                console.log(
-                  `    * Found CID ${cleanCid} in current sync batch!`,
-                );
                 targetUrl = batchAtt.fileUrl;
               }
             }
@@ -228,9 +186,6 @@ const processMessageAttachments = async (
 
           // 4. Thread-wide lookup: If still not found, look in the database
           if (!targetUrl && message.conversationId) {
-            console.log(
-              `    * Searching conversation thread ${message.conversationId} for CID ${cleanCid}...`,
-            );
             try {
               const threadMessage = await Email.findOne({
                 conversationId: message.conversationId,
@@ -250,9 +205,6 @@ const processMessageAttachments = async (
                     (a.name && a.name.toLowerCase() === cleanCid),
                 );
                 if (threadAtt && threadAtt.fileUrl) {
-                  console.log(
-                    `    * Found CID ${cleanCid} in conversation thread!`,
-                  );
                   targetUrl = threadAtt.fileUrl;
                 }
               }
@@ -264,9 +216,6 @@ const processMessageAttachments = async (
           // 5. Global Fallback: Search the ENTIRE database for any email with this CID
           // Use this as a last resort for common logos/images
           if (!targetUrl) {
-            console.log(
-              `    * Final fallback: Global search for CID ${cleanCid}...`,
-            );
             try {
               const globalMatch = await Email.findOne({
                 "attachments.contentId": new RegExp(
@@ -285,9 +234,6 @@ const processMessageAttachments = async (
                     (a.name && a.name.toLowerCase() === cleanCid),
                 );
                 if (globalAtt && globalAtt.fileUrl) {
-                  console.log(
-                    `    * Found CID ${cleanCid} in global database search!`,
-                  );
                   targetUrl = globalAtt.fileUrl;
                 }
               }
@@ -297,22 +243,16 @@ const processMessageAttachments = async (
           }
 
           if (targetUrl) {
-            console.log(`    * SUCCESS: Replaced CID with ${targetUrl}`);
             const escapedCid = cidPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const replaceRegex = new RegExp(`cid:<?${escapedCid}>?`, "gi");
             bodyContent = bodyContent.replace(replaceRegex, targetUrl);
             replacedCount++;
           } else {
-            console.log(`    * FAILED: No match found for CID: ${cidPart}`);
-            // Check if this CID is in an img src
             const imgSrcRegex = new RegExp(
               `<img[^>]+src=["']cid:<?${cidPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>?["']`,
               "i",
             );
-            const tagMatch = bodyContent.match(imgSrcRegex);
-            if (tagMatch) {
-              console.log(`      Found in tag: ${tagMatch[0]}`);
-            }
+            bodyContent = bodyContent.replace(imgSrcRegex, targetUrl || "");
           }
         }
       }
@@ -320,9 +260,6 @@ const processMessageAttachments = async (
       // FINAL CATCH-ALL: Scan for any remaining src="cid:..." patterns that might have been missed
       const remainingCids = bodyContent.match(/src=["']cid:([^"'>\s]+)["']/gi);
       if (remainingCids && remainingCids.length > 0) {
-        console.log(
-          `    * FINAL SCAN: Found ${remainingCids.length} remaining CIDs in src attributes. Attempting last-resort resolution...`,
-        );
         // ... previous logic repeats or we can just leave the log to see what they are
       }
     }
@@ -332,12 +269,6 @@ const processMessageAttachments = async (
       message.body.content = bodyContent;
     }
     message.attachments = storedAttachments;
-
-    if (replacedCount > 0) {
-      console.log(
-        `Successfully replaced ${replacedCount} inline images for message: ${message.subject}`,
-      );
-    }
   } catch (error) {
     console.error(
       `Error processing attachments for message ${message.id}:`,
@@ -417,10 +348,8 @@ export const sendMailFromMailbox = async (
       return;
     }
 
-    // 1. Get Application Token
     const accessToken = await getAppOnlyToken();
 
-    // 2. Prepare the CC Recipients if provided
     let ccRecipients: any[] = [];
     if (ccEmails) {
       const ccList = Array.isArray(ccEmails)
@@ -445,7 +374,6 @@ export const sendMailFromMailbox = async (
         }));
     }
 
-    // 3. Handle Inline Attachments (CIDs)
     const attachments: any[] = [];
     const cidRegex = /cid:<?([a-zA-Z0-9.\-_@]+)>?/g;
     let match;
@@ -458,11 +386,6 @@ export const sendMailFromMailbox = async (
     }
 
     if (foundCids.size > 0) {
-      console.log(
-        `Found ${foundCids.size} CIDs in email content. Searching for bytes...`,
-      );
-
-      // Optimize: Search for all CIDs at once
       const cidList = Array.from(foundCids);
       const cidPrefixes = cidList.map((c) => c.split(".")[0]);
 
@@ -492,15 +415,13 @@ export const sendMailFromMailbox = async (
             name: foundAttachment.name,
             contentType: foundAttachment.contentType,
             contentBytes: foundAttachment.contentBytes,
-            contentId: cid, // Use the CID as found in the HTML
+            contentId: cid,
             isInline: true,
           });
-          console.log(`Attached inline image for CID: ${cid}`);
         }
       }
     }
 
-    // 4. Prepare the Email Payload
     const mailPayload: any = {
       message: {
         subject: subject,
@@ -522,7 +443,6 @@ export const sendMailFromMailbox = async (
       saveToSentItems: "true",
     };
 
-    // 5. Call Graph API to send the mail
     const graphResponse = await fetch(
       `https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`,
       {
@@ -576,13 +496,11 @@ export const getSentEmailsFromDB = async (
     const skip = (Number(page) - 1) * limit;
     const userEmail = req.user.email.toLowerCase();
 
-    // 1. Build Base Match: Filter by hospital if hospitalId is passed
     const baseMatch: any = {};
     if (hospitalId) {
       baseMatch.hospital = new mongoose.Types.ObjectId(hospitalId as string);
     }
 
-    // 2. Define the common aggregation stages for threading and filtering
     const threadingStages: any[] = [
       { $match: baseMatch },
       {
@@ -602,7 +520,7 @@ export const getSentEmailsFromDB = async (
               $cond: [{ $eq: ["$from.address", userEmail] }, true, false],
             },
           },
-          // Search criteria: check if ANY message in the thread matches the search
+
           searchMatch: {
             $max: search
               ? {
@@ -634,11 +552,10 @@ export const getSentEmailsFromDB = async (
           },
         },
       },
-      // Filter: Must have at least one sent message and match search
+
       { $match: { hasSent: true, searchMatch: true } },
     ];
 
-    // 3. Execute List Query
     const emails = await Email.aggregate([
       ...threadingStages,
       { $replaceRoot: { newRoot: "$latestDoc" } },
@@ -647,7 +564,6 @@ export const getSentEmailsFromDB = async (
       { $limit: limit },
     ]);
 
-    // 4. Execute Count Query
     const countResult = await Email.aggregate([
       ...threadingStages,
       { $count: "total" },
@@ -691,13 +607,11 @@ export const getReceivedEmailsFromDB = async (
     const skip = (Number(page) - 1) * limit;
     const userEmail = req.user.email.toLowerCase();
 
-    // 1. Build Base Match: Filter by hospital if hospitalId is passed
     const baseMatch: any = {};
     if (hospitalId) {
       baseMatch.hospital = new mongoose.Types.ObjectId(hospitalId as string);
     }
 
-    // 2. Define the common aggregation stages for threading and filtering
     const threadingStages: any[] = [
       { $match: baseMatch },
       {
@@ -717,7 +631,7 @@ export const getReceivedEmailsFromDB = async (
               $cond: [{ $ne: ["$from.address", userEmail] }, true, false],
             },
           },
-          // Search criteria: check if ANY message in the thread matches the search
+
           searchMatch: {
             $max: search
               ? {
@@ -749,11 +663,10 @@ export const getReceivedEmailsFromDB = async (
           },
         },
       },
-      // Filter: Must have at least one received message and match search
+
       { $match: { hasReceived: true, searchMatch: true } },
     ];
 
-    // 3. Execute List Query
     const emails = await Email.aggregate([
       ...threadingStages,
       { $replaceRoot: { newRoot: "$latestDoc" } },
@@ -762,7 +675,6 @@ export const getReceivedEmailsFromDB = async (
       { $limit: limit },
     ]);
 
-    // 4. Execute Count Query
     const countResult = await Email.aggregate([
       ...threadingStages,
       { $count: "total" },
@@ -805,7 +717,6 @@ export const replyToMessage = async (
       return;
     }
 
-    // 1. Get Application Token
     const accessToken = await getAppOnlyToken();
 
     let ccListArray: any[] = [];
@@ -843,7 +754,6 @@ export const replyToMessage = async (
       if (bccListArray.length > 0) payload.message.bccRecipients = bccListArray;
     }
 
-    // 3. Call Graph API to reply
     const graphResponse = await fetch(
       `https://graph.microsoft.com/v1.0/users/${fromEmail}/messages/${messageId}/reply`,
       {
@@ -866,7 +776,6 @@ export const replyToMessage = async (
       return;
     }
 
-    // Microsoft Graph reply action returns 202 Accepted on success with no body
     res.status(200).json({
       success: true,
       message: `Reply sent successfully from ${fromEmail}`,
@@ -896,7 +805,6 @@ export const syncHospitalEmails = async (
       return;
     }
 
-    // 1. Find Contacts for this Hospital
     const contacts = await Contact.find({ hospital: hospitalId }).select(
       "email",
     );
@@ -911,20 +819,17 @@ export const syncHospitalEmails = async (
       return;
     }
 
-    // 2. Get Application Token
     const accessToken = await getAppOnlyToken();
 
-    // 3. Build Graph API Search Query with last 3 months date filter
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-    const formattedDate = threeMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD
+    const formattedDate = threeMonthsAgo.toISOString().split("T")[0];
 
     const emailTerms = contactEmails
       .map((email) => `\\"${email}\\"`)
       .join(" OR ");
     const searchQuery = `"(${emailTerms}) AND received>=${formattedDate}"`;
 
-    // 4. Fetch messages from Graph API for all users in DB
     const users = await User.find({});
     let totalSynced = 0;
 
@@ -949,7 +854,7 @@ export const syncHospitalEmails = async (
           const response = await fetch(url, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
-              ConsistencyLevel: "eventual", // Required for $search
+              ConsistencyLevel: "eventual",
             },
           });
 
@@ -960,7 +865,7 @@ export const syncHospitalEmails = async (
               `Graph API error for user ${userEmail}:`,
               data?.error?.message,
             );
-            break; // Stop fetching for this user and proceed
+            break;
           }
 
           const messages = data.value || [];
@@ -968,7 +873,6 @@ export const syncHospitalEmails = async (
 
           userSyncedCount += messages.length;
 
-          // 🔥 Process attachments in chunks
           for (let i = 0; i < messages.length; i += ATTACHMENT_CONCURRENCY) {
             const chunk = messages.slice(i, i + ATTACHMENT_CONCURRENCY);
             await Promise.allSettled(
@@ -978,7 +882,6 @@ export const syncHospitalEmails = async (
             );
           }
 
-          // 🔹 Prepare Bulk Operations
           for (const msg of messages) {
             bulkOps.push({
               updateOne: {
@@ -1036,7 +939,6 @@ export const syncHospitalEmails = async (
       return userSyncedCount;
     };
 
-    // Concurrency control: process at most 5 users concurrently
     const CONCURRENCY_LIMIT = 5;
     let index = 0;
 
@@ -1050,7 +952,6 @@ export const syncHospitalEmails = async (
       }
     };
 
-    // Spin up workers
     const workers = Array.from(
       { length: Math.min(CONCURRENCY_LIMIT, users.length) },
       worker,
@@ -1110,7 +1011,7 @@ export const getAttachmentContent = async (
       );
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${attachment.name || "attachment"}"`,
+        `inline; filename="${attachment.name || "attachment"}"`,
       );
       res.status(200).send(buffer);
     } else {

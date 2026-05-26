@@ -146,7 +146,6 @@ export const updateProduct = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    // console.log(req.body)
     const updatedProduct = await Product.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,

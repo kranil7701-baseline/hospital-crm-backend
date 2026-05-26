@@ -135,13 +135,6 @@
 
 // export default Email;
 
-
-
-
-
-
-
-
 import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface IEmailRecipient {
@@ -203,7 +196,7 @@ const RecipientSchema = new Schema<IEmailRecipient>(
     name: { type: String, trim: true },
     address: { type: String, required: true, trim: true, lowercase: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const AttachmentSchema = new Schema<IEmailAttachment>(
@@ -215,7 +208,7 @@ const AttachmentSchema = new Schema<IEmailAttachment>(
     fileUrl: String,
     isInline: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const EmailSchema = new Schema<IEmail>(
@@ -274,22 +267,20 @@ const EmailSchema = new Schema<IEmail>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // 🔥 IMPORTANT INDEXES
-EmailSchema.index(
-  { graphId: 1, hospital: 1 },
-  { unique: true }
-);
+EmailSchema.index({ graphId: 1, hospital: 1 }, { unique: true });
 
-EmailSchema.index(
-  { subject: "text", bodyPreview: "text", "body.content": "text" }
-);
+EmailSchema.index({
+  subject: "text",
+  bodyPreview: "text",
+  "body.content": "text",
+});
 
 EmailSchema.index({ conversationId: 1 });
 
-// 🚀 IMPORTANT for production performance
 EmailSchema.set("autoIndex", false);
 
 export default mongoose.model<IEmail>("Email", EmailSchema);

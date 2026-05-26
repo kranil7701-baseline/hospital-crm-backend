@@ -120,7 +120,6 @@ export const createNote = async (
       m.replace("@", "").trim().toLowerCase(),
     );
 
-    // console.log("Tagged users 0000000000000:", cleanedMentions);
 
     if (cleanedMentions.length > 0) {
       try {

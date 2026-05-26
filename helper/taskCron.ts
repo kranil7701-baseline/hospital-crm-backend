@@ -41,8 +41,6 @@ const formatDateRange = (baseDate: Date) => {
 
 export const initTaskCron = () => {
   cron.schedule("0 9 * * *", async () => {
-    console.log("⏰ Running Task Reminder Cron Job...");
-
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -65,10 +63,6 @@ export const initTaskCron = () => {
           .populate("user")
           .populate("hospital", "hospitalName");
 
-        console.log(
-          `Found ${tasks.length} task(s) due in ${milestone.days} days.`,
-        );
-
         for (const task of tasks) {
           const alreadySent = await TaskAlertLog.findOne({
             taskId: task._id,
@@ -81,9 +75,6 @@ export const initTaskCron = () => {
 
           const taskUser: any = task.user;
           if (!taskUser || !taskUser._id) {
-            console.warn(
-              `Task ${task._id} has no assigned user; skipping reminders.`,
-            );
             continue;
           }
 
@@ -149,6 +140,4 @@ export const initTaskCron = () => {
       console.error("Error in Task Reminder Cron Job:", error);
     }
   });
-
-  console.log("📅 Task Reminder Cron Job Initialized (Daily at 9:00 AM)");
 };

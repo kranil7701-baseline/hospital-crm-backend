@@ -6,25 +6,24 @@ import {
   getReceivedEmailsFromDB,
   replyToMessage,
   getAttachmentContent,
-  syncHospitalEmails
+  syncHospitalEmails,
 } from "../controller/graphAppOnlyAPI.ts";
 import { protect } from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
 
-router.get("/messages/:email", protect, getMailboxMessages); // get email messages from graph API outllok Azure
+router.get("/messages/:email", protect, getMailboxMessages);
 
-router.get("/sent-emails", protect, getSentEmailsFromDB); // Get Sent Emails from DB
-router.get("/received-emails", protect, getReceivedEmailsFromDB); // Get Received Emails from DB
+router.get("/sent-emails", protect, getSentEmailsFromDB);
+router.get("/received-emails", protect, getReceivedEmailsFromDB);
 
-router.post("/sync", protect, syncHospitalEmails); // Sync Emails by Date
-router.post("/sync-hospital", protect, syncHospitalEmails); // Sync Hospital Emails
-router.post("/send", protect, sendMailFromMailbox); // Send Emails
-router.post("/reply", protect, replyToMessage); // Reply to Emails
+router.post("/sync", protect, syncHospitalEmails);
+router.post("/sync-hospital", protect, syncHospitalEmails);
+router.post("/send", protect, sendMailFromMailbox);
+router.post("/reply", protect, replyToMessage);
 
 router.get(
   "/attachment/:userId/:messageId/:attachmentId",
-  protect,
   getAttachmentContent,
 );
 

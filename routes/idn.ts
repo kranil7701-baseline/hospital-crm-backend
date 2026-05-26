@@ -19,7 +19,6 @@ router.use(protect);
 router.get("/idn-name-id", GetIDNNameIDS);
 
 router.get("/all-idns", getIDNs);
-// router.get('/all-idns-deals', getAllIDNsDeals);
 router.get("/all-idns-deals", getAllIDNsDeals);
 router.get("/:id", getIDNById);
 router.post("/create", authorizeRoles(UserRole.ADMIN), createIDN);

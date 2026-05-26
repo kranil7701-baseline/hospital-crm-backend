@@ -14,7 +14,7 @@ router.use(protect);
 router.get("/vapid-public-key", getVapidPublicKey);
 router.post("/subscribe", subscribe);
 router.post("/unsubscribe", unsubscribe);
-router.post("/send", sendNotification); // Optional: add auth middleware to protect this route
+router.post("/send", sendNotification);
 router.get("/user-subscription", checkPushSubscription);
 
 export default router;

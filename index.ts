@@ -14,7 +14,6 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
 
-// Routes (unchanged)
 import hospitalRoutes from "./routes/hospital.ts";
 import idnRoutes from "./routes/idn.ts";
 import gpoRoutes from "./routes/gpo.ts";
@@ -28,9 +27,7 @@ import taskRoutes from "./routes/task.ts";
 import noteRoutes from "./routes/notes.ts";
 import callLogRoutes from "./routes/callLogs.ts";
 import activityRoutes from "./routes/activity.ts";
-// import graphRoutes from "./routes/graph";
 import documentRoutes from "./routes/document.ts";
-// import graphCertRoutes from "./routes/graphCertificate";
 import graphAppOnlyRoutes from "./routes/graphAppOnly.ts";
 import pushNotificationRoutes from "./routes/pushNotification.ts";
 import { setupPush } from "./controller/pushNotification.ts";
@@ -43,7 +40,6 @@ initDealCron();
 initTaskCron();
 const PORT = Number(process.env.PORT) || 8000;
 
-// ================= CORS =================
 const allowedOrigins = [
   "https://hospital-crm-frontend.vercel.app",
   "http://localhost:3000",
@@ -63,7 +59,6 @@ app.use(
   }),
 );
 
-// ================= MIDDLEWARE =================
 app.use(cookieParser());
 app.use(morgan("dev"));
 app.use(express.json());
@@ -71,14 +66,12 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-// ================= DB CONNECTION (FIXED FOR VERCEL) =================
 const MONGO_URI = process.env.DATABASE as string;
 
 if (!MONGO_URI) {
   throw new Error("DATABASE env variable not defined");
 }
 
-// global cache (important for serverless)
 let cached = (global as any).mongoose;
 
 if (!cached) {
@@ -104,7 +97,6 @@ const connectDB = async () => {
   return cached.conn;
 };
 
-// 🔥 Ensure DB is connected before handling ANY request
 app.use(async (req, res, next) => {
   try {
     await connectDB();
@@ -118,7 +110,6 @@ app.use(async (req, res, next) => {
   }
 });
 
-// ================= ROUTES =================
 app.get("/", (req, res) => {
   res.json({ message: "CRM Backend API" });
 });
@@ -139,22 +130,6 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/document", documentRoutes);
 app.use("/api/graph-app", graphAppOnlyRoutes);
 app.use("/api/push", pushNotificationRoutes);
-
-// if (process.env.NODE_ENV !== "production") {
-//   const startServer = async () => {
-//     try {
-//       await connectDB(); // 🔥 connect DB first
-//       app.listen(PORT, "0.0.0.0", () => {
-//         console.log(`🚀 Server running on port ${PORT}`);
-//       });
-//     } catch (err) {
-//       console.error("❌ MongoDB Connection Failed:", err);
-//       process.exit(1);
-//     }
-//   };
-
-//   startServer();
-// }
 
 const startServer = async () => {
   try {

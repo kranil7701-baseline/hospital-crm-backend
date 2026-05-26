@@ -86,10 +86,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       const token = generateToken(user.id);
 
       const cookieOptions = getCookieOptions();
-      console.log(`Setting login cookie for ${email}. Options:`, {
-        ...cookieOptions,
-        maxAge: "1d",
-      });
+ 
       res.cookie("token", token, cookieOptions);
 
       res.status(200).json({

@@ -17,11 +17,9 @@ const router = express.Router();
 
 router.use(protect);
 
-//Sample Test Route
 router.get("/hospiptal-id-name", HospitalIDName);
 
 router.get("/all-hospitals", getHospitals);
-// router.get('/all-hospitals-deals', getAllHospitalsDeals);
 router.get("/all-hospitals-deals", getAllHospitalsDeals);
 router.get("/:id", getHospitalByHospitalId);
 router.post("/create", authorizeRoles(UserRole.ADMIN), createHospital);

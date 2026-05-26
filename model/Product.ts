@@ -21,10 +21,6 @@ const ProductSchema: Schema = new Schema(
       required: true,
       trim: true,
     },
-    // Marketprice: {
-    //     type: Number,
-    //     required: true
-    // }
   },
   {
     timestamps: true,

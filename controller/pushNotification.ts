@@ -19,7 +19,6 @@ export const setupPush = () => {
     privateVapidKey,
   );
 
-  console.log("✅ Push notifications initialized");
 };
 
 const isValidPushSubscription = (subscription: any) => {
@@ -35,7 +34,6 @@ const isValidPushSubscription = (subscription: any) => {
   );
 };
 
-// ✅ Subscribe (NOW linked with user)
 export const subscribe = async (req: AuthRequest, res: Response) => {
   try {
     const subscription = req.body;
@@ -73,7 +71,6 @@ export const subscribe = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// ✅ Unsubscribe
 export const unsubscribe = async (req: Request, res: Response) => {
   try {
     const { endpoint } = req.body;
@@ -102,7 +99,6 @@ const isPushSubscriptionValid = (subscription: any) => {
   );
 };
 
-// 🔥 Internal helper
 const sendPush = async (subscriptions: any[], payload: string) => {
   const results = subscriptions.map((sub) => {
     if (!isPushSubscriptionValid(sub)) {
@@ -134,7 +130,6 @@ const sendPush = async (subscriptions: any[], payload: string) => {
   await Promise.all(results);
 };
 
-// ✅ 🔥 Send to SPECIFIC USERS (for mentions)
 export const sendPushToUsers = async (
   userIds: string[],
   payloadObj: {
@@ -150,7 +145,7 @@ export const sendPushToUsers = async (
       user: { $in: userIds },
     });
 
-    console.log(`🎯 Sending push to USERS: ${subscriptions.length} devices`);
+
 
     await sendPush(subscriptions, payload);
 
@@ -161,7 +156,6 @@ export const sendPushToUsers = async (
   }
 };
 
-// ✅ API endpoint (manual trigger → all users)
 export const sendNotification = async (req: Request, res: Response) => {
   try {
     const { title, message, url } = req.body;
@@ -181,7 +175,6 @@ export const sendNotification = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Get VAPID public key
 export const getVapidPublicKey = (req: Request, res: Response) => {
   res.status(200).json({
     success: true,
