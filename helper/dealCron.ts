@@ -4,7 +4,15 @@ import DealAlertLog from "../model/DealAlertLog.ts";
 import { sendPushToUsers } from "../controller/pushNotification.ts";
 import { sendGraphEmail } from "./graphEmail.ts";
 
+const isCronJobEnabled = () =>
+  String(process.env.ENABLE_CRON_JOB || "").toLowerCase() === "true";
+
 export const initDealCron = () => {
+  if (!isCronJobEnabled()) {
+    console.log("Cron jobs disabled: skipping deal cron initialization.");
+    return;
+  }
+
   cron.schedule("0 9 * * *", async () => {
     try {
       const today = new Date();

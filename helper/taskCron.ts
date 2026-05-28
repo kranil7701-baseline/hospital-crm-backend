@@ -4,6 +4,9 @@ import TaskAlertLog from "../model/TaskAlertLog.ts";
 import { sendPushToUsers } from "../controller/pushNotification.ts";
 import { sendGraphEmail } from "./graphEmail.ts";
 
+const isCronJobEnabled = () =>
+  String(process.env.ENABLE_CRON_JOB || "").toLowerCase() === "true";
+
 const buildTaskReminderSubject = (taskTitle: string, daysLeft: number) =>
   `Task Reminder: ${taskTitle} due in ${daysLeft} days`;
 
@@ -40,6 +43,11 @@ const formatDateRange = (baseDate: Date) => {
 };
 
 export const initTaskCron = () => {
+  if (!isCronJobEnabled()) {
+    console.log("Cron jobs disabled: skipping task cron initialization.");
+    return;
+  }
+
   cron.schedule("0 9 * * *", async () => {
     try {
       const today = new Date();

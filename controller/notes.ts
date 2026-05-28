@@ -32,7 +32,7 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
 
     const pipeline: any[] = [
       { $match: matchStage },
-      // ✅ Optimized lookup for hospital
+
       {
         $lookup: {
           from: "hospitals",
@@ -120,7 +120,6 @@ export const createNote = async (
       m.replace("@", "").trim().toLowerCase(),
     );
 
-
     if (cleanedMentions.length > 0) {
       try {
         const validUsers = await User.find({
@@ -134,7 +133,6 @@ export const createNote = async (
         if (validUsers.length > 0) {
           const userIds = validUsers.map((u) => u._id.toString());
 
-          // ✅ NOW this is correct
           await sendPushToUsers(userIds, {
             title: `${req.user?.name} mentioned you in a note`,
             message: noteText,

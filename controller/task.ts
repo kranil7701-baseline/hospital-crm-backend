@@ -28,12 +28,10 @@ export const getDashboardTasks = async (
 
     const matchStage: any = {};
 
-    // 🔥 Only filter by user for normal users
     if (!isAdminOrExecutive) {
       matchStage.user = new mongoose.Types.ObjectId(userId);
     }
 
-    // Last 7 days tasks
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -41,7 +39,6 @@ export const getDashboardTasks = async (
       $gte: sevenDaysAgo,
     };
 
-    // 🔥 Search
     if (search) {
       matchStage.$or = [
         {
@@ -226,13 +223,11 @@ export const getTaskById = async (
 
     res.status(200).json({ success: true, data: task });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching task",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching task",
+      error: error.message,
+    });
   }
 };
 
@@ -252,13 +247,11 @@ export const createTask = async (
 
     res.status(201).json({ success: true, data: newTask });
   } catch (error: any) {
-    res
-      .status(400)
-      .json({
-        success: false,
-        message: "Failed to create task",
-        error: error.message,
-      });
+    res.status(400).json({
+      success: false,
+      message: "Failed to create task",
+      error: error.message,
+    });
   }
 };
 
@@ -280,13 +273,11 @@ export const updateTask = async (
 
     res.status(200).json({ success: true, data: updatedTask });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update task",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update task",
+      error: error.message,
+    });
   }
 };
 
@@ -307,12 +298,10 @@ export const deleteTask = async (
       .status(200)
       .json({ success: true, message: "Task deleted successfully" });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error deleting task",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error deleting task",
+      error: error.message,
+    });
   }
 };
