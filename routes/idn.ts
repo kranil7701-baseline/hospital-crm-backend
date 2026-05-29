@@ -21,8 +21,20 @@ router.get("/idn-name-id", GetIDNNameIDS);
 router.get("/all-idns", getIDNs);
 router.get("/all-idns-deals", getAllIDNsDeals);
 router.get("/:id", getIDNById);
-router.post("/create", authorizeRoles(UserRole.ADMIN), createIDN);
-router.put("/:id", authorizeRoles(UserRole.ADMIN), updateIDN);
-router.delete("/:id", authorizeRoles(UserRole.ADMIN), deleteIDN);
+router.post(
+  "/create",
+  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
+  createIDN,
+);
+router.put(
+  "/:id",
+  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
+  updateIDN,
+);
+router.delete(
+  "/:id",
+  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
+  deleteIDN,
+);
 
 export default router;

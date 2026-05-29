@@ -20,8 +20,20 @@ router.get("/gpo-name-id", GetGPONameIDS);
 router.get("/all-gpos", getGPOs);
 router.get("/all-gpo-deals", getAllGPODeals);
 router.get("/:id", getGPOById);
-router.post("/create", authorizeRoles(UserRole.ADMIN), createGPO);
-router.put("/:id", authorizeRoles(UserRole.ADMIN), updateGPO);
-router.delete("/:id", authorizeRoles(UserRole.ADMIN), deleteGPO);
+router.post(
+  "/create",
+  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
+  createGPO,
+);
+router.put(
+  "/:id",
+  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
+  updateGPO,
+);
+router.delete(
+  "/:id",
+  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
+  deleteGPO,
+);
 
 export default router;

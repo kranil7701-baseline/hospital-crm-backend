@@ -5,6 +5,7 @@ import Deal from "../model/deal.ts";
 import Hospital from "../model/Hospital.ts";
 import Product from "../model/Product.ts";
 import mongoose from "mongoose";
+import { UserRole } from "../model/User.ts";
 
 export const GetIDNNameIDS = async (
   req: Request,
@@ -527,9 +528,12 @@ export const getAllIDNsDeals = async (
     const skip = (page - 1) * limit;
 
     let userObjectId: mongoose.Types.ObjectId | null = null;
-    const isAdmin = req.user?.role === "Admin";
+    const isAdminOrExecutiveOrCustomerSuccess =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.EXECUTIVE ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
 
-    if (isAdmin) {
+    if (isAdminOrExecutiveOrCustomerSuccess) {
       if (reqUserId && mongoose.Types.ObjectId.isValid(reqUserId)) {
         userObjectId = new mongoose.Types.ObjectId(reqUserId);
       }

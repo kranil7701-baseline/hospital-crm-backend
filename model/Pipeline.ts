@@ -13,7 +13,7 @@ const PipelineSchema: Schema = new Schema({
     type: String,
     required: true,
     unique: true,
-    enum: ['Demo', 'CPA', 'Committee', 'Trial', 'Pending Decision', 'Closed Won', 'Implemented'],
+    enum: ['Demo', 'CPA', 'Committee', 'Trial', 'Pending Decision', 'Closed Won', 'Closed Lost', 'Implemented'],
     trim: true
   },
   order: {
@@ -21,7 +21,7 @@ const PipelineSchema: Schema = new Schema({
     required: true,
     unique: true,
     min: 1,
-    max: 7
+    max: 8
   },
   expectedARR: {
     type: Number,

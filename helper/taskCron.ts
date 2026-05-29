@@ -48,104 +48,108 @@ export const initTaskCron = () => {
     return;
   }
 
-  cron.schedule("0 9 * * *", async () => {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+  cron.schedule(
+    "0 9 * * *",
+    async () => {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-      const milestones = [
-        { label: "5_DAY" as const, days: 5 },
-        { label: "2_DAY" as const, days: 2 },
-      ];
+        const milestones = [
+          { label: "5_DAY" as const, days: 5 },
+          { label: "2_DAY" as const, days: 2 },
+        ];
 
-      for (const milestone of milestones) {
-        const targetDate = new Date(today);
-        targetDate.setDate(today.getDate() + milestone.days);
+        for (const milestone of milestones) {
+          const targetDate = new Date(today);
+          targetDate.setDate(today.getDate() + milestone.days);
 
-        const { start, end } = formatDateRange(targetDate);
+          const { start, end } = formatDateRange(targetDate);
 
-        const tasks = await Task.find({
-          dueDate: { $gte: start, $lte: end },
-          reminders: { $in: ["email", "push"] },
-        })
-          .populate("user")
-          .populate("hospital", "hospitalName");
+          const tasks = await Task.find({
+            dueDate: { $gte: start, $lte: end },
+            reminders: { $in: ["email", "push"] },
+          })
+            .populate("user")
+            .populate("hospital", "hospitalName");
 
-        for (const task of tasks) {
-          const alreadySent = await TaskAlertLog.findOne({
-            taskId: task._id,
-            milestone: milestone.label,
-          });
-
-          if (alreadySent) {
-            continue;
-          }
-
-          const taskUser: any = task.user;
-          if (!taskUser || !taskUser._id) {
-            continue;
-          }
-
-          const hospitalName =
-            (task.hospital as any)?.hospitalName || "Unknown Hospital";
-          const daysLeft = milestone.days;
-          const subject = buildTaskReminderSubject(task.title, daysLeft);
-          const content = buildTaskReminderContent(
-            task.title,
-            task.description || "",
-            hospitalName,
-            task.dueDate,
-            daysLeft,
-          );
-
-          let sentAtLeastOnce = false;
-
-          if (task.reminders.includes("push")) {
-            try {
-              await sendPushToUsers([taskUser._id.toString()], {
-                title: `${daysLeft}-Day Task Reminder: ${task.title}`,
-                message: `Task is due on ${task.dueDate.toDateString()} for ${hospitalName}.`,
-                url: `${process.env.FRONTEND_URL || "#"}${process.env.FRONTEND_URL ? `/tasks/${task._id}` : ""}`,
-              });
-
-              sentAtLeastOnce = true;
-            } catch (pushError) {
-              console.error("Task push notification failed:", pushError);
-            }
-          }
-
-          if (task.reminders.includes("email")) {
-            if (!taskUser.email) {
-              console.warn(
-                `Task ${task._id} has email reminders enabled but assigned user has no email.`,
-              );
-            } else {
-              try {
-                await sendGraphEmail(
-                  process.env.MS_GRAPH_FROM_EMAIL || "kmason@rfhealth.com",
-                  taskUser.email,
-                  subject,
-                  content,
-                );
-
-                sentAtLeastOnce = true;
-              } catch (emailError) {
-                console.error("Task email reminder failed:", emailError);
-              }
-            }
-          }
-
-          if (sentAtLeastOnce) {
-            await TaskAlertLog.create({
+          for (const task of tasks) {
+            const alreadySent = await TaskAlertLog.findOne({
               taskId: task._id,
-              userId: taskUser._id,
               milestone: milestone.label,
             });
+
+            if (alreadySent) {
+              continue;
+            }
+
+            const taskUser: any = task.user;
+            if (!taskUser || !taskUser._id) {
+              continue;
+            }
+
+            const hospitalName =
+              (task.hospital as any)?.hospitalName || "Unknown Hospital";
+            const daysLeft = milestone.days;
+            const subject = buildTaskReminderSubject(task.title, daysLeft);
+            const content = buildTaskReminderContent(
+              task.title,
+              task.description || "",
+              hospitalName,
+              task.dueDate,
+              daysLeft,
+            );
+
+            let sentAtLeastOnce = false;
+
+            if (task.reminders.includes("push")) {
+              try {
+                await sendPushToUsers([taskUser._id.toString()], {
+                  title: `${daysLeft}-Day Task Reminder: ${task.title}`,
+                  message: `Task is due on ${task.dueDate.toDateString()} for ${hospitalName}.`,
+                  url: `${process.env.FRONTEND_URL || "#"}${process.env.FRONTEND_URL ? `/tasks/${task._id}` : ""}`,
+                });
+
+                sentAtLeastOnce = true;
+              } catch (pushError) {
+                console.error("Task push notification failed:", pushError);
+              }
+            }
+
+            if (task.reminders.includes("email")) {
+              if (!taskUser.email) {
+                console.warn(
+                  `Task ${task._id} has email reminders enabled but assigned user has no email.`,
+                );
+              } else {
+                try {
+                  await sendGraphEmail(
+                    process.env.MS_GRAPH_FROM_EMAIL || "kmason@rfhealth.com",
+                    taskUser.email,
+                    subject,
+                    content,
+                  );
+
+                  sentAtLeastOnce = true;
+                } catch (emailError) {
+                  console.error("Task email reminder failed:", emailError);
+                }
+              }
+            }
+
+            if (sentAtLeastOnce) {
+              await TaskAlertLog.create({
+                taskId: task._id,
+                userId: taskUser._id,
+                milestone: milestone.label,
+              });
+            }
           }
         }
+      } catch (error) {
+        console.error("Error in Task Reminder Cron Job:", error);
       }
-    } catch (error) {
-      console.error("Error in Task Reminder Cron Job:", error);
-    }
-  });
+    },
+    { timezone: "America/New_York" },
+  );
 };

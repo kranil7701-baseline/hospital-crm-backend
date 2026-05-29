@@ -311,15 +311,34 @@ export const updateHospital = async (
 
     const updateData = { ...req.body };
 
+    // Restrict Sales role from editing certain fields
+    if (req.user?.role === UserRole.SALES) {
+      // Remove restricted fields if present
+      delete updateData.hospitalName;
+      delete updateData.idn;
+      delete updateData.address;
+    }
+
     // Check if the 'user' field is being changed
     if (
       updateData.user &&
       updateData.user.toString() !== hospital.user.toString()
     ) {
-      if (req.user?.role !== UserRole.ADMIN) {
+      // if (req.user?.role !== UserRole.ADMIN) {
+      //   res.status(403).json({
+      //     success: false,
+      //     message: "Only Admin can change the assigned user of a hospital",
+      //   });
+      //   return;
+      // }
+      if (
+        req.user?.role !== UserRole.ADMIN &&
+        req.user?.role !== UserRole.CUSTOMER_SUCCESS
+      ) {
         res.status(403).json({
           success: false,
-          message: "Only Admin can change the assigned user of a hospital",
+          message:
+            "Only Admin or Customer Success can change the assigned user of a hospital",
         });
         return;
       }
@@ -388,6 +407,7 @@ export const getHospitalsByIDN = async (
   }
 };
 
+/*
 export const getAllHospitalsDeals00 = async (
   req: AuthRequest,
   res: Response,
@@ -731,6 +751,7 @@ export const getAllHospitalsDeals00 = async (
     });
   }
 };
+*/
 
 export const getAllHospitalsDeals = async (
   req: AuthRequest,

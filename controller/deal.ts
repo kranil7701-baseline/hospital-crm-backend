@@ -153,6 +153,7 @@ export const getDeals = async (
               $project: {
                 dealId: "$_id",
                 hospital: {
+                  _id: "$hospital._id",
                   hospitalName: "$hospital.hospitalName",
                   city: "$hospital.city",
                   state: "$hospital.state",
@@ -422,12 +423,14 @@ export const updateDealProductStage = async (
     }
 
     // ✅ Permission checks
-    const isAdmin = loggedInUser?.role === UserRole.ADMIN;
+    const isAdminOrCustomerSuccess =
+      loggedInUser?.role === UserRole.ADMIN ||
+      loggedInUser?.role === UserRole.CUSTOMER_SUCCESS;
 
     const isDealOwner = deal.user.toString() === loggedInUser?._id?.toString();
 
     // ✅ Only admin or deal owner can update
-    if (!isAdmin && !isDealOwner) {
+    if (!isAdminOrCustomerSuccess && !isDealOwner) {
       res.status(403).json({
         success: false,
         message: "You are not authorized to update this deal stage",
@@ -623,9 +626,14 @@ export const updateDeal = async (
     }
 
     // authorization check
-    const isAdmin = req.user?.role === UserRole.ADMIN;
+    const isAdminOrCustomerSuccess =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
 
-    if (!isAdmin && deal.user.toString() !== req.user?._id.toString()) {
+    if (
+      !isAdminOrCustomerSuccess &&
+      deal.user.toString() !== req.user?._id.toString()
+    ) {
       res.status(403).json({
         success: false,
         message: "You are not authorized to update this deal",
@@ -667,7 +675,7 @@ export const updateDeal = async (
 
     // only admin can change assigned user
     if (userId) {
-      if (!isAdmin) {
+      if (!isAdminOrCustomerSuccess) {
         res.status(403).json({
           success: false,
           message: "Only admin can change assigned user",
@@ -721,13 +729,18 @@ export const getDashboardStats = async (
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
-    // 🔥 Check if Admin or Executive
-    const isAdminOrExecutive = userRole === "Admin" || userRole === "Executive";
+    // 🔥 Check if Admin, Executive or Customer Success
+    const isAdminOrCustomerSuccessOrExecutive =
+      userRole === UserRole.ADMIN ||
+      userRole === UserRole.EXECUTIVE ||
+      userRole === UserRole.CUSTOMER_SUCCESS;
 
     // =========================
     // 🔥 DEAL FILTER
     // =========================
-    const dealMatchFilter = isAdminOrExecutive ? {} : { user: objectUserId };
+    const dealMatchFilter = isAdminOrCustomerSuccessOrExecutive
+      ? {}
+      : { user: objectUserId };
 
     // =========================
     // 🔥 GET HOSPITAL IDS
@@ -741,7 +754,7 @@ export const getDashboardStats = async (
     // =========================
     // 🔥 HOSPITAL FILTER
     // =========================
-    const hospitalFilter = isAdminOrExecutive
+    const hospitalFilter = isAdminOrCustomerSuccessOrExecutive
       ? {}
       : {
           $or: [{ user: objectUserId }, { _id: { $in: matchedHospitalIds } }],
@@ -769,6 +782,7 @@ export const getDashboardStats = async (
       "Trial",
       "Pending Decision",
       "Closed Won",
+      "Closed Lost",
       "Implemented",
     ];
 
@@ -1191,14 +1205,15 @@ export const HospitalProductCount = async (
       return;
     }
 
-    const isAdminOrExecutive = role === "Admin" || role === "Executive";
+    const isAdminOrCustomerSuccessOrExecutive =
+      role === UserRole.ADMIN ||
+      role === UserRole.EXECUTIVE ||
+      role === UserRole.CUSTOMER_SUCCESS;
 
     let hospitalCount = 0;
     let productCount = 0;
 
-    if (isAdminOrExecutive) {
-      // Admin & Executive => show all hospitals and all deals
-
+    if (isAdminOrCustomerSuccessOrExecutive) {
       const totalHospitals = await Hospital.countDocuments();
 
       const totalDeals = await Deal.countDocuments();
@@ -1208,18 +1223,14 @@ export const HospitalProductCount = async (
     } else {
       const objectUserId = new mongoose.Types.ObjectId(userId);
 
-      // Get all deals of user
       const userDeals = await Deal.find(
         { user: objectUserId },
         "hospital",
       ).lean();
 
-      // Hospitals from deals
       const matchedHospitalIds = userDeals
         .map((d: any) => d.hospital?.toString())
         .filter((id: any) => id != null);
-
-      // Hospitals assigned directly
       const assignedHospitals = await Hospital.find(
         { user: objectUserId },
         "_id",
@@ -1228,16 +1239,12 @@ export const HospitalProductCount = async (
       const assignedHospitalIds = assignedHospitals.map((h: any) =>
         h._id.toString(),
       );
-
-      // Unique hospitals
       const uniqueHospitalIds = new Set([
         ...matchedHospitalIds,
         ...assignedHospitalIds,
       ]);
 
       hospitalCount = uniqueHospitalIds.size;
-
-      // Total deals count
       productCount = userDeals.length;
     }
 
