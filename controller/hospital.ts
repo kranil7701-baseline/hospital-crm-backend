@@ -767,9 +767,12 @@ export const getAllHospitalsDeals = async (
     const productStage = req.query.productStage as string;
 
     let filterUserId: mongoose.Types.ObjectId | null = null;
-    const isAdmin = req.user?.role === "Admin";
+    const isAdminOrExecutiveOrCustomerSuccess =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.EXECUTIVE ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
 
-    if (isAdmin) {
+    if (isAdminOrExecutiveOrCustomerSuccess) {
       if (reqUserId && mongoose.Types.ObjectId.isValid(reqUserId)) {
         filterUserId = new mongoose.Types.ObjectId(reqUserId);
       }
