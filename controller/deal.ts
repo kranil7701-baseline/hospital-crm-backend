@@ -26,6 +26,15 @@ export const getDeals = async (
         ? 15
         : null;
     const skip = page ? (page - 1) * (limit || 15) : 0;
+    const dealStageRaw = req.query.dealStage;
+
+    const dealStages = (
+      Array.isArray(dealStageRaw) ? dealStageRaw : [dealStageRaw]
+    )
+      .map((stage) => (typeof stage === "string" ? stage : ""))
+      .flatMap((stage) => stage.split(","))
+      .map((stage) => stage.trim())
+      .filter(Boolean);
 
     let productIds: mongoose.Types.ObjectId[] = [];
     if (productIdsRaw) {
@@ -58,6 +67,16 @@ export const getDeals = async (
             {
               $match: {
                 "products.product": { $in: productIds },
+              },
+            },
+          ]
+        : []),
+
+      ...(dealStages.length > 0
+        ? [
+            {
+              $match: {
+                "products.stage": { $in: dealStages },
               },
             },
           ]
