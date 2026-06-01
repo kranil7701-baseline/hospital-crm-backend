@@ -763,13 +763,15 @@ export const getDashboardStats = async (
     // =========================
     // 🔥 BASIC COUNTS
     // =========================
-    const [totalHospitals, totalHospitalsInDB, totalProductsInDB] =
+    const [totalHospitals, totalHospitalsInDB, totalProductsInDB, totalDeals] =
       await Promise.all([
         Hospital.countDocuments(hospitalFilter),
 
         Hospital.countDocuments({}),
 
         Product.countDocuments({}),
+
+        Deal.countDocuments(dealMatchFilter),
       ]);
 
     // =========================
@@ -936,6 +938,7 @@ export const getDashboardStats = async (
         totalHospitals,
         totalHospitalsInDB,
         totalProductsInDB,
+        totalDeals,
 
         activeDeals: data?.totals?.[0]?.activeDealsCount || 0,
 
