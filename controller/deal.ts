@@ -993,6 +993,16 @@ export const getClosedWonDeals = async (
       ? {}
       : { user: objectUserId };
 
+    const countPipeline: any[] = [
+      { $match: dealMatchFilter },
+      { $unwind: "$products" },
+      { $match: { "products.stage": "Closed Won" } },
+      { $count: "count" },
+    ];
+
+    const totalCountResult = await Deal.aggregate(countPipeline);
+    const totalCount = totalCountResult[0]?.count || 0;
+
     const pipeline: any[] = [
       { $match: dealMatchFilter },
       { $unwind: "$products" },
@@ -1009,6 +1019,18 @@ export const getClosedWonDeals = async (
         },
       },
       { $unwind: "$products.productDetail" },
+
+      // Sort by nearest close date first, then paginate
+      {
+        $addFields: {
+          sortDate: {
+            $ifNull: ["$products.expectedCloseDate", "$products.dealDate"],
+          },
+        },
+      },
+      { $sort: { sortDate: 1, "products._id": 1 } },
+      { $skip: skip },
+      { $limit: limit },
 
       // Group by hospital
       {
@@ -1027,6 +1049,7 @@ export const getClosedWonDeals = async (
           },
           totalAmount: { $sum: "$products.dealAmount" },
           productsCount: { $sum: 1 },
+          nearestCloseDate: { $min: "$sortDate" },
         },
       },
 
@@ -1059,45 +1082,33 @@ export const getClosedWonDeals = async (
           products: 1,
           totalAmount: 1,
           productsCount: 1,
+          nearestCloseDate: 1,
         },
       },
 
-      { $sort: { hospitalName: 1 } },
-
-      {
-        $facet: {
-          data: [{ $skip: skip }, { $limit: limit }],
-          totalCount: [{ $count: "count" }],
-          overallStats: [
-            {
-              $group: {
-                _id: null,
-                totalAmount: { $sum: "$totalAmount" },
-                totalProducts: { $sum: "$productsCount" },
-              },
-            },
-          ],
-        },
-      },
+      { $sort: { nearestCloseDate: 1, hospitalName: 1 } },
     ];
 
     const result = await Deal.aggregate(pipeline);
-    const data = result[0]?.data || [];
-    const total = result[0]?.totalCount[0]?.count || 0;
-    const overall = result[0]?.overallStats[0] || {
-      totalAmount: 0,
-      totalProducts: 0,
-    };
+    const data = result || [];
+
+    const overallStats = data.reduce(
+      (acc: any, hospital: any) => ({
+        totalAmount: acc.totalAmount + (hospital.totalAmount || 0),
+        totalProducts: acc.totalProducts + (hospital.productsCount || 0),
+      }),
+      { totalAmount: 0, totalProducts: 0 },
+    );
 
     res.status(200).json({
       success: true,
       page,
       limit,
-      totalHospitals: total,
-      totalPages: Math.ceil(total / limit),
-      hasMore: total > skip + data.length,
-      amount: overall.totalAmount,
-      productsCount: overall.totalProducts,
+      totalDeals: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      hasMore: totalCount > skip + data.length,
+      amount: overallStats.totalAmount,
+      productsCount: overallStats.totalProducts,
       data: data,
     });
   } catch (error: any) {
@@ -1115,8 +1126,12 @@ export const getImplementedDeals = async (
 ): Promise<void> => {
   try {
     const userId = req.user?._id;
+
     if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
+      res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
       return;
     }
 
@@ -1138,25 +1153,49 @@ export const getImplementedDeals = async (
 
     const pipeline: any[] = [
       { $match: dealMatchFilter },
-      { $unwind: "$products" },
-      { $match: { "products.stage": "Implemented" } },
 
-      // lookup product details
+      { $unwind: "$products" },
+
+      {
+        $match: {
+          "products.stage": "Implemented",
+        },
+      },
+
       {
         $lookup: {
           from: "products",
           localField: "products.product",
           foreignField: "_id",
-          pipeline: [{ $project: { _id: 1, name: 1 } }],
+          pipeline: [
+            {
+              $project: {
+                _id: 1,
+                name: 1,
+              },
+            },
+          ],
           as: "products.productDetail",
         },
       },
-      { $unwind: "$products.productDetail" },
 
-      // Group by hospital
+      {
+        $unwind: {
+          path: "$products.productDetail",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
+      // GROUP BY DEAL ID (NOT HOSPITAL)
       {
         $group: {
-          _id: "$hospital",
+          _id: "$_id",
+          hospital: { $first: "$hospital" },
+          user: { $first: "$user" },
+          gpo: { $first: "$gpo" },
+          idn: { $first: "$idn" },
+          createdAt: { $first: "$createdAt" },
+
           products: {
             $push: {
               _id: "$products._id",
@@ -1168,28 +1207,58 @@ export const getImplementedDeals = async (
               dealDate: "$products.dealDate",
             },
           },
-          totalAmount: { $sum: "$products.dealAmount" },
-          productsCount: { $sum: 1 },
+
+          totalAmount: {
+            $sum: {
+              $ifNull: ["$products.dealAmount", 0],
+            },
+          },
+
+          productsCount: {
+            $sum: 1,
+          },
+
+          minExpectedCloseDate: {
+            $min: "$products.expectedCloseDate",
+          },
+          minDealDate: {
+            $min: "$products.dealDate",
+          },
         },
       },
 
-      // Lookup hospital details
+      {
+        $addFields: {
+          sortDate: {
+            $ifNull: ["$minExpectedCloseDate", "$minDealDate"],
+          },
+        },
+      },
+
       {
         $lookup: {
           from: "hospitals",
-          localField: "_id",
+          localField: "hospital",
           foreignField: "_id",
           as: "hospital",
         },
       },
-      { $unwind: "$hospital" },
 
-      // Search by hospital name
+      {
+        $unwind: {
+          path: "$hospital",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+
       ...(search
         ? [
             {
               $match: {
-                "hospital.hospitalName": { $regex: search, $options: "i" },
+                "hospital.hospitalName": {
+                  $regex: search,
+                  $options: "i",
+                },
               },
             },
           ]
@@ -1197,26 +1266,44 @@ export const getImplementedDeals = async (
 
       {
         $project: {
-          _id: "$hospital._id",
+          _id: 1,
+          hospitalId: "$hospital._id",
           hospitalName: "$hospital.hospitalName",
           products: 1,
           totalAmount: 1,
           productsCount: 1,
+          createdAt: 1,
+          sortDate: 1,
         },
       },
 
-      { $sort: { hospitalName: 1 } },
+      {
+        $sort: {
+          sortDate: 1,
+          createdAt: -1,
+        },
+      },
 
       {
         $facet: {
           data: [{ $skip: skip }, { $limit: limit }],
-          totalCount: [{ $count: "count" }],
+
+          totalCount: [
+            {
+              $count: "count",
+            },
+          ],
+
           overallStats: [
             {
               $group: {
                 _id: null,
-                totalAmount: { $sum: "$totalAmount" },
-                totalProducts: { $sum: "$productsCount" },
+                totalAmount: {
+                  $sum: "$totalAmount",
+                },
+                totalProducts: {
+                  $sum: "$productsCount",
+                },
               },
             },
           ],
@@ -1225,9 +1312,14 @@ export const getImplementedDeals = async (
     ];
 
     const result = await Deal.aggregate(pipeline);
-    const data = result[0]?.data || [];
-    const total = result[0]?.totalCount[0]?.count || 0;
-    const overall = result[0]?.overallStats[0] || {
+
+    const facetResult = result[0] || {};
+
+    const data = facetResult.data || [];
+
+    const totalCount = facetResult.totalCount?.[0]?.count || 0;
+
+    const overallStats = facetResult.overallStats?.[0] || {
       totalAmount: 0,
       totalProducts: 0,
     };
@@ -1236,12 +1328,12 @@ export const getImplementedDeals = async (
       success: true,
       page,
       limit,
-      totalHospitals: total,
-      totalPages: Math.ceil(total / limit),
-      hasMore: total > skip + data.length,
-      amount: overall.totalAmount,
-      productsCount: overall.totalProducts,
-      data: data,
+      totalDeals: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      hasMore: totalCount > skip + data.length,
+      amount: overallStats.totalAmount,
+      productsCount: overallStats.totalProducts,
+      data,
     });
   } catch (error: any) {
     res.status(500).json({
