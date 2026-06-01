@@ -984,8 +984,17 @@ export const getClosedWonDeals = async (
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
+    const isAdminOrCustomerSuccessOrExecutive =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.EXECUTIVE ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
+
+    const dealMatchFilter = isAdminOrCustomerSuccessOrExecutive
+      ? {}
+      : { user: objectUserId };
+
     const pipeline: any[] = [
-      { $match: { user: objectUserId } },
+      { $match: dealMatchFilter },
       { $unwind: "$products" },
       { $match: { "products.stage": "Closed Won" } },
 
@@ -1118,8 +1127,17 @@ export const getImplementedDeals = async (
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
+    const isAdminOrCustomerSuccessOrExecutive =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.EXECUTIVE ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
+
+    const dealMatchFilter = isAdminOrCustomerSuccessOrExecutive
+      ? {}
+      : { user: objectUserId };
+
     const pipeline: any[] = [
-      { $match: { user: objectUserId } },
+      { $match: dealMatchFilter },
       { $unwind: "$products" },
       { $match: { "products.stage": "Implemented" } },
 
