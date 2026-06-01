@@ -38,7 +38,7 @@ export const getContacts = async (
     }
 
     const contacts = await Contact.find(filter)
-      .select("-createdAt -updatedAt -__v -_id -product -isPrimary")
+      .select("-createdAt -updatedAt -__v -product -isPrimary")
       .populate({
         path: "hospital",
         select: "hospitalName gpo idn",

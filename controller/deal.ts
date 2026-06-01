@@ -184,7 +184,7 @@ export const getDeals = async (
                 expectedCloseDate: "$products.expectedCloseDate",
               },
             },
-            { $sort: { createdAt: -1 } },
+            { $sort: { dealAmount: -1 } },
             ...(page || limit
               ? [{ $skip: skip }, ...(limit ? [{ $limit: limit }] : [])]
               : []),
