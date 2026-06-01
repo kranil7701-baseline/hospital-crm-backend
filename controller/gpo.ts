@@ -403,7 +403,7 @@ export const getAllGPODeals = async (
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // 🔥 STEP 1: Hospitals lookup (dynamic like IDN)
+      // 🔥 STEP 1: Hospitals lookup for count only
       {
         $lookup: {
           from: "hospitals",
@@ -423,40 +423,8 @@ export const getAllGPODeals = async (
                     },
               },
             },
-            // {
-            //   $lookup: {
-            //     from: "idns",
-            //     localField: "idn",
-            //     foreignField: "_id",
-            //     as: "idn",
-            //   },
-            // },
-            // { $unwind: { path: "$idn", preserveNullAndEmptyArrays: true } },
             {
-              $lookup: {
-                from: "idns",
-                let: { idnId: "$idn" },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: { $eq: ["$_id", "$$idnId"] },
-                    },
-                  },
-                  {
-                    $project: {
-                      name: 1,
-                      _id: 0,
-                    },
-                  },
-                ],
-                as: "idn",
-              },
-            },
-            {
-              $unwind: {
-                path: "$idn",
-                preserveNullAndEmptyArrays: true,
-              },
+              $project: { _id: 1 },
             },
           ],
           as: "hospitals",
@@ -495,170 +463,32 @@ export const getAllGPODeals = async (
               },
             },
             { $unwind: "$products" },
-            {
-              $lookup: {
-                from: "products",
-                localField: "products.product",
-                foreignField: "_id",
-                as: "product",
-              },
-            },
-            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
           ],
           as: "deals",
         },
       },
 
-      // 🔥 STEP 5: Hospital-level aggregation
-      {
-        $addFields: {
-          hospitals: {
-            $map: {
-              input: "$hospitals",
-              as: "h",
-              in: {
-                _id: "$$h._id",
-                hospitalName: "$$h.hospitalName",
-                idn: "$$h.idn",
-                city: "$$h.city",
-                state: "$$h.state",
-                zip: "$$h.zip",
-
-                totalExpectedARR: {
-                  $sum: {
-                    $map: {
-                      input: {
-                        $filter: {
-                          input: "$deals",
-                          as: "d",
-                          cond: { $eq: ["$$d.hospital", "$$h._id"] },
-                        },
-                      },
-                      as: "d",
-                      in: { $ifNull: ["$$d.products.dealAmount", 0] },
-                    },
-                  },
-                },
-
-                expectedARRByProduct: {
-                  $map: {
-                    input: {
-                      $setUnion: [
-                        {
-                          $map: {
-                            input: {
-                              $filter: {
-                                input: "$deals",
-                                as: "d",
-                                cond: { $eq: ["$$d.hospital", "$$h._id"] },
-                              },
-                            },
-                            as: "d",
-                            in: "$$d.product.name",
-                          },
-                        },
-                      ],
-                    },
-                    as: "productName",
-                    in: {
-                      name: "$$productName",
-                      amount: {
-                        $sum: {
-                          $map: {
-                            input: {
-                              $filter: {
-                                input: "$deals",
-                                as: "d",
-                                cond: {
-                                  $and: [
-                                    { $eq: ["$$d.hospital", "$$h._id"] },
-                                    {
-                                      $eq: [
-                                        "$$d.product.name",
-                                        "$$productName",
-                                      ],
-                                    },
-                                  ],
-                                },
-                              },
-                            },
-                            as: "d",
-                            in: { $ifNull: ["$$d.products.dealAmount", 0] },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-
-      // 🔥 STEP 6: GPO totals
+      // 🔥 STEP 5: GPO totals
       {
         $addFields: {
           gpoTotalExpectedARR: {
             $sum: "$deals.products.dealAmount",
           },
-        },
-      },
-
-      // 🔥 STEP 7: GPO product grouping
-      {
-        $addFields: {
-          gpoARRByProduct: {
-            $map: {
-              input: {
-                $setUnion: [
-                  {
-                    $map: {
-                      input: "$deals",
-                      as: "d",
-                      in: "$$d.product.name",
-                    },
-                  },
-                ],
-              },
-              as: "productName",
-              in: {
-                name: "$$productName",
-                amount: {
-                  $sum: {
-                    $map: {
-                      input: "$deals",
-                      as: "d",
-                      in: {
-                        $cond: [
-                          { $eq: ["$$d.product.name", "$$productName"] },
-                          { $ifNull: ["$$d.products.dealAmount", 0] },
-                          0,
-                        ],
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-
-      {
-        $addFields: {
           totalHospitals: { $size: "$hospitals" },
         },
       },
 
+      { $sort: { createdAt: -1 } },
+
       {
         $project: {
-          deals: 0,
-          hospitalIds: 0,
+          _id: 1,
+          name: 1,
+          gpoTotalExpectedARR: 1,
+          totalHospitals: 1,
         },
       },
 
-      { $sort: { createdAt: -1 } },
       { $skip: skip },
       { $limit: limit },
     ];

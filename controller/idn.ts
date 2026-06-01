@@ -190,13 +190,11 @@ export const getIDNHospitalDealsbyID = async (
       },
     });
   } catch (error: any) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to get IDN hospital deals",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to get IDN hospital deals",
+      error: error.message,
+    });
   }
 };
 
@@ -721,7 +719,7 @@ export const getAllIDNsDeals = async (
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // 🔥 STEP 1: Hospitals lookup (dynamic based on user)
+      // 🔥 STEP 1: Hospitals lookup for count only
       {
         $lookup: {
           from: "hospitals",
@@ -742,26 +740,8 @@ export const getAllIDNsDeals = async (
               },
             },
             {
-              $lookup: {
-                from: "gpos",
-                let: { gpoId: "$gpo" },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: { $eq: ["$_id", "$$gpoId"] },
-                    },
-                  },
-                  {
-                    $project: {
-                      name: 1,
-                      _id: 0,
-                    },
-                  },
-                ],
-                as: "gpo",
-              },
+              $project: { _id: 1 },
             },
-            { $unwind: { path: "$gpo", preserveNullAndEmptyArrays: true } },
           ],
           as: "hospitals",
         },
@@ -785,7 +765,7 @@ export const getAllIDNsDeals = async (
         },
       },
 
-      // 🔥 STEP 4: Deals lookup
+      // 🔥 STEP 4: Deals lookup (from those hospitals)
       {
         $lookup: {
           from: "deals",
@@ -799,173 +779,32 @@ export const getAllIDNsDeals = async (
               },
             },
             { $unwind: "$products" },
-            {
-              $lookup: {
-                from: "products",
-                localField: "products.product",
-                foreignField: "_id",
-                as: "product",
-              },
-            },
-            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
           ],
           as: "deals",
         },
       },
 
-      // 🔥 STEP 5: Hospital-level aggregation
-      {
-        $addFields: {
-          hospitals: {
-            $map: {
-              input: "$hospitals",
-              as: "h",
-              in: {
-                _id: "$$h._id",
-                hospitalName: "$$h.hospitalName",
-                gpo: "$$h.gpo",
-                city: "$$h.city",
-                state: "$$h.state",
-                zip: "$$h.zip",
-
-                totalExpectedARR: {
-                  $sum: {
-                    $map: {
-                      input: {
-                        $filter: {
-                          input: "$deals",
-                          as: "d",
-                          cond: { $eq: ["$$d.hospital", "$$h._id"] },
-                        },
-                      },
-                      as: "d",
-                      in: { $ifNull: ["$$d.products.dealAmount", 0] },
-                    },
-                  },
-                },
-
-                expectedARRByProduct: {
-                  $map: {
-                    input: {
-                      $setUnion: [
-                        {
-                          $map: {
-                            input: {
-                              $filter: {
-                                input: "$deals",
-                                as: "d",
-                                cond: { $eq: ["$$d.hospital", "$$h._id"] },
-                              },
-                            },
-                            as: "d",
-                            in: "$$d.product.name",
-                          },
-                        },
-                      ],
-                    },
-                    as: "productName",
-                    in: {
-                      name: "$$productName",
-                      amount: {
-                        $sum: {
-                          $map: {
-                            input: {
-                              $filter: {
-                                input: "$deals",
-                                as: "d",
-                                cond: {
-                                  $and: [
-                                    { $eq: ["$$d.hospital", "$$h._id"] },
-                                    {
-                                      $eq: [
-                                        "$$d.product.name",
-                                        "$$productName",
-                                      ],
-                                    },
-                                  ],
-                                },
-                              },
-                            },
-                            as: "d",
-                            in: { $ifNull: ["$$d.products.dealAmount", 0] },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-
-      // 🔥 STEP 6: IDN total ARR
+      // 🔥 STEP 5: IDN totals
       {
         $addFields: {
           idnTotalExpectedARR: {
             $sum: "$deals.products.dealAmount",
           },
-        },
-      },
-
-      // 🔥 STEP 7: IDN product grouping
-      {
-        $addFields: {
-          idnARRByProduct: {
-            $map: {
-              input: {
-                $setUnion: [
-                  {
-                    $map: {
-                      input: "$deals",
-                      as: "d",
-                      in: "$$d.product.name",
-                    },
-                  },
-                ],
-              },
-              as: "productName",
-              in: {
-                name: "$$productName",
-                amount: {
-                  $sum: {
-                    $map: {
-                      input: "$deals",
-                      as: "d",
-                      in: {
-                        $cond: [
-                          { $eq: ["$$d.product.name", "$$productName"] },
-                          { $ifNull: ["$$d.products.dealAmount", 0] },
-                          0,
-                        ],
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-
-      // 🔥 STEP 8: Total hospitals
-      {
-        $addFields: {
           totalHospitals: { $size: "$hospitals" },
         },
       },
 
+      { $sort: { createdAt: -1 } },
+
       {
         $project: {
-          deals: 0,
-          createdAt: 0,
-          updatedAt: 0,
-          __v: 0,
+          _id: 1,
+          name: 1,
+          idnTotalExpectedARR: 1,
+          totalHospitals: 1,
         },
       },
 
-      { $sort: { createdAt: -1 } },
       { $skip: skip },
       { $limit: limit },
     ];
