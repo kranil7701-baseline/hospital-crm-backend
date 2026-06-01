@@ -55,7 +55,7 @@ export const getContacts = async (
       })
       .populate({
         path: "product",
-        select: "name -_id",
+        select: "name _id",
       })
       .sort({
         firstName: 1,
