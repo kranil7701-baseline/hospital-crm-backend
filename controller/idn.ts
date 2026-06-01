@@ -32,6 +32,174 @@ export const GetIDNNameIDS = async (
   }
 };
 
+export const getIDNHospitalDealsbyID = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const idnId = req.query.idnId as string;
+    if (!idnId || !mongoose.Types.ObjectId.isValid(idnId)) {
+      res
+        .status(400)
+        .json({ success: false, message: "Invalid or missing idnId" });
+      return;
+    }
+
+    const page = parseInt((req.query.page as string) || "1", 10) || 1;
+    const limit = parseInt((req.query.limit as string) || "10", 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const isPrivileged =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.EXECUTIVE ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
+
+    const hospitalId = req.query.hospitalId as string | undefined;
+    const productId = req.query.productId as string | undefined;
+
+    const hospitalMatch: any = { idn: new mongoose.Types.ObjectId(idnId) };
+    if (!isPrivileged) {
+      if (req.user?._id) {
+        hospitalMatch.user = new mongoose.Types.ObjectId(
+          req.user._id as unknown as string,
+        );
+      }
+    }
+    if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
+      hospitalMatch._id = new mongoose.Types.ObjectId(hospitalId);
+    }
+
+    const hospitalPipeline: any[] = [
+      { $match: hospitalMatch },
+      {
+        $lookup: {
+          from: "deals",
+          let: { hospitalId: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$hospital", "$$hospitalId"] } } },
+            {
+              $unwind: { path: "$products", preserveNullAndEmptyArrays: true },
+            },
+            ...(productId && mongoose.Types.ObjectId.isValid(productId)
+              ? [
+                  {
+                    $match: {
+                      "products.product": new mongoose.Types.ObjectId(
+                        productId,
+                      ),
+                    },
+                  },
+                ]
+              : []),
+            {
+              $lookup: {
+                from: "products",
+                localField: "products.product",
+                foreignField: "_id",
+                as: "product",
+              },
+            },
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+            {
+              $project: {
+                dealId: "$_id",
+                productId: "$product._id",
+                productName: "$product.name",
+                dealAmount: "$products.dealAmount",
+                quantity: "$products.quantity",
+                beds: "$products.beds",
+                stage: "$products.stage",
+                expectedCloseDate: "$products.expectedCloseDate",
+                dealDate: "$products.dealDate",
+                createdAt: 1,
+              },
+            },
+          ],
+          as: "deals",
+        },
+      },
+      {
+        $addFields: {
+          totalHospitalARR: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ["$deals", []] },
+                as: "d",
+                in: { $ifNull: ["$$d.dealAmount", 0] },
+              },
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          hospitalName: "$hospitalName",
+          city: "$city",
+          state: "$state",
+          zip: "$zip",
+          deals: 1,
+          totalHospitalARR: 1,
+        },
+      },
+      { $sort: { totalHospitalARR: -1, hospitalName: 1 } },
+      { $skip: skip },
+      { $limit: limit },
+    ];
+
+    const results = await Hospital.aggregate(hospitalPipeline);
+
+    const totalHospitals = await Hospital.countDocuments(hospitalMatch);
+
+    const hospitalIdsForDeals = await Hospital.find(hospitalMatch)
+      .select("_id")
+      .lean();
+    const hospitalIds = hospitalIdsForDeals.map((h: any) => h._id);
+
+    let totalDeals = 0;
+    if (hospitalIds.length > 0) {
+      const dealsCountPipeline: any[] = [
+        { $match: { hospital: { $in: hospitalIds } } },
+        { $unwind: { path: "$products", preserveNullAndEmptyArrays: true } },
+        ...(productId && mongoose.Types.ObjectId.isValid(productId)
+          ? [
+              {
+                $match: {
+                  "products.product": new mongoose.Types.ObjectId(productId),
+                },
+              },
+            ]
+          : []),
+        { $group: { _id: "$_id" } },
+        { $count: "totalDeals" },
+      ];
+
+      const dealsCountResult = await Deal.aggregate(dealsCountPipeline);
+      totalDeals = dealsCountResult[0]?.totalDeals || 0;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: results,
+      pagination: {
+        totalHospitals,
+        totalDeals,
+        page,
+        limit,
+        totalPages: Math.ceil(totalHospitals / limit),
+      },
+    });
+  } catch (error: any) {
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to get IDN hospital deals",
+        error: error.message,
+      });
+  }
+};
+
 export const getIDNs = async (req: Request, res: Response): Promise<void> => {
   try {
     // Query params

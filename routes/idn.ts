@@ -6,6 +6,7 @@ import {
   deleteIDN,
   updateIDN,
   getAllIDNsDeals,
+  getIDNHospitalDealsbyID,
   GetIDNNameIDS,
   getAllIDNsDeals00,
 } from "../controller/idn.ts";
@@ -20,6 +21,7 @@ router.get("/idn-name-id", GetIDNNameIDS);
 
 router.get("/all-idns", getIDNs);
 router.get("/all-idns-deals", getAllIDNsDeals);
+router.get("/deals-by-idn", getIDNHospitalDealsbyID);
 router.get("/:id", getIDNById);
 router.post(
   "/create",
