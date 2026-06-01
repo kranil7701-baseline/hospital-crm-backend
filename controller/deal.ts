@@ -783,6 +783,7 @@ export const getDashboardStats = async (
       "Pending Decision",
       "Closed Won",
       "Closed Lost",
+      "Ghosted",
       "Implemented",
     ];
 
@@ -803,7 +804,15 @@ export const getDashboardStats = async (
                 _id: null,
 
                 totalPipelineAmount: {
-                  $sum: "$products.dealAmount",
+                  $sum: {
+                    $cond: [
+                      {
+                        $in: ["$products.stage", ["Closed Won", "Closed Lost"]],
+                      },
+                      0,
+                      "$products.dealAmount",
+                    ],
+                  },
                 },
 
                 activeDealsCount: {
@@ -847,9 +856,35 @@ export const getDashboardStats = async (
           closedBusinessRaw: [
             {
               $match: {
-                "products.stage": {
-                  $in: ["Closed Won", "Implemented"],
+                "products.stage": "Closed Won",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalAmount: {
+                  $sum: "$products.dealAmount",
                 },
+                hospitals: {
+                  $addToSet: "$hospital",
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                totalAmount: 1,
+                hospitalCount: {
+                  $size: "$hospitals",
+                },
+              },
+            },
+          ],
+
+          implementedRaw: [
+            {
+              $match: {
+                "products.stage": "Implemented",
               },
             },
             {
@@ -908,8 +943,12 @@ export const getDashboardStats = async (
 
         closedBusiness: {
           totalAmount: data?.closedBusinessRaw?.[0]?.totalAmount || 0,
-
           hospitalCount: data?.closedBusinessRaw?.[0]?.hospitalCount || 0,
+        },
+
+        implemented: {
+          totalAmount: data?.implementedRaw?.[0]?.totalAmount || 0,
+          hospitalCount: data?.implementedRaw?.[0]?.hospitalCount || 0,
         },
 
         pipeline,
