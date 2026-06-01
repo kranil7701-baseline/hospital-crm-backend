@@ -124,7 +124,13 @@ export const getContactById = async (
       return;
     }
 
-    const contact = await Contact.findById(id).populate("hospital");
+    const contact = await Contact.findById(id)
+      .populate(
+        "hospital",
+        "hospitalName gpo idn city state zip idn gpo teamHospital magnetHospital _id address location",
+      )
+      .populate("product", "name _id")
+      .select("-createdAt -updatedAt -__v");
 
     if (!contact) {
       res.status(404).json({
