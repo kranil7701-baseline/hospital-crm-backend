@@ -11,7 +11,7 @@ import { UserRole } from "../model/User.ts";
 
 const router = express.Router();
 
-// router.use(protect);
+router.use(protect);
 
 router.get("/all-contacts", getContacts);
 router.get("/:id", getContactById);
