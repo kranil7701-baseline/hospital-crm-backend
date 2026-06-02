@@ -2,9 +2,10 @@ import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Contact from "../model/Contact.ts";
 import mongoose from "mongoose";
+import { UserRole } from "../model/User.ts";
 
 export const getContacts = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -18,11 +19,28 @@ export const getContacts = async (
 
     const filter: any = {};
 
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      filter.user = userId;
+    // Only admins, executives, and customer success can view all contacts
+    const currentUser = req.user;
+    const isAdminOrExecutive =
+      currentUser &&
+      (currentUser.role === UserRole.ADMIN ||
+        currentUser.role === UserRole.EXECUTIVE ||
+        currentUser.role === UserRole.CUSTOMER_SUCCESS);
+
+    if (isAdminOrExecutive) {
+      if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        filter.user = userId;
+      }
+    } else {
+      // Non-privileged users can only see their own contacts
+      if (!currentUser || !currentUser._id) {
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
+      }
+      filter.user = String(currentUser._id);
     }
 
-    // product is array
+    // product filter is still supported, but the product field will not be returned
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
       filter.product = productId;
     }
@@ -38,7 +56,7 @@ export const getContacts = async (
     }
 
     const contacts = await Contact.find(filter)
-      .select("-createdAt -updatedAt -__v -isPrimary")
+      .select("-createdAt -updatedAt -__v -isPrimary -product")
       .populate({
         path: "hospital",
         select: "hospitalName gpo idn",
@@ -52,10 +70,6 @@ export const getContacts = async (
             select: "name -_id",
           },
         ],
-      })
-      .populate({
-        path: "product",
-        select: "name _id",
       })
       .sort({
         firstName: 1,
