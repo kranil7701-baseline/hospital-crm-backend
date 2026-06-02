@@ -219,7 +219,7 @@ export const getDeals = async (
           closedBusiness: [
             {
               $match: {
-                "products.stage": { $in: ["Closed Won", "Implemented"] },
+                "products.stage": "Closed Won",
               },
             },
             {
@@ -828,7 +828,15 @@ export const getDashboardStats = async (
                   $sum: {
                     $cond: [
                       {
-                        $in: ["$products.stage", ["Closed Won", "Closed Lost"]],
+                        $in: [
+                          "$products.stage",
+                          [
+                            "Closed Won",
+                            "Closed Lost",
+                            "Ghosted",
+                            "Implemented",
+                          ],
+                        ],
                       },
                       0,
                       "$products.dealAmount",
@@ -843,6 +851,8 @@ export const getDashboardStats = async (
                         $and: [
                           { $ne: ["$products.stage", "Closed Won"] },
                           { $ne: ["$products.stage", "Implemented"] },
+                          { $ne: ["$products.stage", "Closed Lost"] },
+                          { $ne: ["$products.stage", "Ghosted"] },
                         ],
                       },
                       1,
@@ -1462,6 +1472,107 @@ export const DealsTesting = async (
     res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+export const DealStageCounts = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    // No user-based filtering here — return counts across all deals
+    const dealMatchFilter: any = {};
+
+    const stages = [
+      "Demo",
+      "CPA",
+      "Committee",
+      "Trial",
+      "Pending Decision",
+      "Ghosted",
+      "Closed Lost",
+      "Closed Won",
+      "Implemented",
+    ];
+
+    const stageCountsResult = await Deal.aggregate([
+      { $match: dealMatchFilter },
+      { $unwind: "$products" },
+      {
+        $group: {
+          _id: "$products.stage",
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          stage: "$_id",
+          count: 1,
+        },
+      },
+    ]);
+
+    const stageCountsMap = new Map<string, number>(
+      stageCountsResult.map((item: any) => [item.stage, item.count]),
+    );
+
+    const missingEntry = stageCountsResult.find(
+      (i: any) =>
+        i.stage === null ||
+        (typeof i.stage === "string" && i.stage.trim() === ""),
+    );
+    const missingCount = missingEntry?.count || 0;
+
+    // Count deals that have no products array or empty products
+    const noProductsResult = await Deal.aggregate([
+      { $match: dealMatchFilter },
+      { $project: { products: { $ifNull: ["$products", []] } } },
+      { $addFields: { productsSize: { $size: "$products" } } },
+      { $match: { productsSize: 0 } },
+      { $count: "count" },
+    ]);
+    const noProductsCount = noProductsResult[0]?.count || 0;
+
+    // Count product entries where the `product` field is missing or null
+    const productFieldMissingResult = await Deal.aggregate([
+      { $match: dealMatchFilter },
+      { $unwind: "$products" },
+      {
+        $match: {
+          $or: [
+            { "products.product": { $exists: false } },
+            { "products.product": null },
+          ],
+        },
+      },
+      { $count: "count" },
+    ]);
+    const productFieldMissingCount = productFieldMissingResult[0]?.count || 0;
+
+    const productMissingCount = noProductsCount + productFieldMissingCount;
+
+    const stageCounts = stages.map((stage) => ({
+      stage,
+      count: stageCountsMap.get(stage) || 0,
+    }));
+
+    if (missingCount > 0) {
+      stageCounts.push({ stage: "Missing", count: missingCount });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: stageCounts,
+      missingCount,
+      productMissingCount,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch deal stage counts",
+      error: error.message,
     });
   }
 };

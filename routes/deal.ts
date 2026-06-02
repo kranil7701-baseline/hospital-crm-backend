@@ -11,6 +11,7 @@ import {
   getImplementedDeals,
   HospitalProductCount,
   DealsTesting,
+  DealStageCounts,
 } from "../controller/deal.ts";
 import { protect, authorizeRoles } from "../middleware/authMiddleware.ts";
 
@@ -34,5 +35,7 @@ router.get("/stats/implemented", getImplementedDeals);
 router.get("/stats/hospital-product-count", HospitalProductCount);
 
 router.get("/stats/all-deals", DealsTesting);
+
+router.get("/stats/deal-stage-counts", DealStageCounts);
 
 export default router;
