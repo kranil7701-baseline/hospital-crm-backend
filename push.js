@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { HospitalData } from "./hospitaldata.js";
+import { HospitalData } from "../files/hospitaldata.js";
 import Hospital from "./model/Hospital.ts";
 import IDN from "./model/Idn.ts";
 import dns from "dns";
