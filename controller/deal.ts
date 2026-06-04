@@ -129,7 +129,12 @@ export const getDeals = async (
                   {
                     $match: {
                       "products.stage": {
-                        $nin: ["Closed Won", "Closed Lost", "Implemented"],
+                        $nin: [
+                          "Closed Won",
+                          "Closed Lost",
+                          "Implemented",
+                          "Ghosted",
+                        ],
                       },
                     },
                   },
@@ -1428,7 +1433,9 @@ export const HospitalProductCount = async (
       role === UserRole.CUSTOMER_SUCCESS;
 
     let hospitalCount = 0;
-    let productCount = 0;
+    let dealsCount = 0;
+
+    const productCount = await Product.countDocuments();
 
     if (isAdminOrCustomerSuccessOrExecutive) {
       const totalHospitals = await Hospital.countDocuments();
@@ -1436,7 +1443,7 @@ export const HospitalProductCount = async (
       const totalDeals = await Deal.countDocuments();
 
       hospitalCount = totalHospitals;
-      productCount = totalDeals;
+      dealsCount = totalDeals;
     } else {
       const objectUserId = new mongoose.Types.ObjectId(userId);
 
@@ -1462,12 +1469,13 @@ export const HospitalProductCount = async (
       ]);
 
       hospitalCount = uniqueHospitalIds.size;
-      productCount = userDeals.length;
+      dealsCount = userDeals.length;
     }
 
     res.status(200).json({
       success: true,
       hospitalCount,
+      dealsCount,
       productCount,
     });
   } catch (error: any) {
