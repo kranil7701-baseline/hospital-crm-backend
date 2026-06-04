@@ -28,11 +28,7 @@ router.post(
   authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
   createHospital,
 );
-router.put(
-  "/:id",
-  authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS, UserRole.SALES),
-  updateHospital,
-);
+router.put("/:id", updateHospital);
 router.delete(
   "/:id",
   authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),

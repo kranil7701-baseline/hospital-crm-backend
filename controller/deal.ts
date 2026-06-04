@@ -26,6 +26,7 @@ export const getDeals = async (
         ? 15
         : null;
     const skip = page ? (page - 1) * (limit || 15) : 0;
+    const usePaginationFilter = page !== null && limit !== null;
     const dealStageRaw = req.query.dealStage;
 
     const dealStages = (
@@ -123,6 +124,17 @@ export const getDeals = async (
       {
         $facet: {
           deals: [
+            ...(usePaginationFilter
+              ? [
+                  {
+                    $match: {
+                      "products.stage": {
+                        $nin: ["Closed Won", "Closed Lost", "Implemented"],
+                      },
+                    },
+                  },
+                ]
+              : []),
             {
               $lookup: {
                 from: "idns",
@@ -209,9 +221,33 @@ export const getDeals = async (
               : []),
           ],
 
-          totalDealsCount: [{ $count: "count" }],
+          totalDealsCount: [
+            ...(usePaginationFilter
+              ? [
+                  {
+                    $match: {
+                      "products.stage": {
+                        $nin: ["Closed Won", "Closed Lost", "Implemented"],
+                      },
+                    },
+                  },
+                ]
+              : []),
+            { $count: "count" },
+          ],
 
           totalHospitals: [
+            ...(usePaginationFilter
+              ? [
+                  {
+                    $match: {
+                      "products.stage": {
+                        $nin: ["Closed Won", "Closed Lost", "Implemented"],
+                      },
+                    },
+                  },
+                ]
+              : []),
             { $group: { _id: "$hospital._id" } },
             { $count: "count" },
           ],
