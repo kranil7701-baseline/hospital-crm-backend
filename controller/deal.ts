@@ -133,6 +133,7 @@ export const getDeals = async (
                           "Closed Won",
                           "Closed Lost",
                           "Implemented",
+                          "No Longer Buying",
                           "Ghosted",
                         ],
                       },
@@ -232,7 +233,12 @@ export const getDeals = async (
                   {
                     $match: {
                       "products.stage": {
-                        $nin: ["Closed Won", "Closed Lost", "Implemented"],
+                        $nin: [
+                          "Closed Won",
+                          "Closed Lost",
+                          "Implemented",
+                          "No Longer Buying",
+                        ],
                       },
                     },
                   },
@@ -247,7 +253,12 @@ export const getDeals = async (
                   {
                     $match: {
                       "products.stage": {
-                        $nin: ["Closed Won", "Closed Lost", "Implemented"],
+                        $nin: [
+                          "Closed Won",
+                          "Closed Lost",
+                          "Implemented",
+                          "No Longer Buying",
+                        ],
                       },
                     },
                   },

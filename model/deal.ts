@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema } from "mongoose";
 
 export interface IDealProduct {
   product: mongoose.Types.ObjectId;
@@ -9,7 +9,6 @@ export interface IDealProduct {
   expectedCloseDate?: Date;
   dealDate?: Date;
 }
-
 
 export interface IDeal extends Document {
   hospital: mongoose.Types.ObjectId;
@@ -22,70 +21,74 @@ export interface IDeal extends Document {
   updatedAt: Date;
 }
 
-const DealSchema: Schema = new Schema({
-  hospital: {
-    type: Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true,
-    index: true
-  },
-  idn: {
-    type: Schema.Types.ObjectId,
-    ref: 'IDN',
-    required: true,
-    index: true
-  },
-  gpo: {
-    type: Schema.Types.ObjectId,
-    ref: 'GPO',
-    // required: true,
-    index: true
-  },
-  products: [
-    {
-      product: { type: Schema.Types.ObjectId, ref: "Product" },
-      dealAmount: Number,
-      quantity: {
-        type: Number,
-        default: 1
+const DealSchema: Schema = new Schema(
+  {
+    hospital: {
+      type: Schema.Types.ObjectId,
+      ref: "Hospital",
+      required: true,
+      index: true,
+    },
+    idn: {
+      type: Schema.Types.ObjectId,
+      ref: "IDN",
+      required: true,
+      index: true,
+    },
+    gpo: {
+      type: Schema.Types.ObjectId,
+      ref: "GPO",
+      // required: true,
+      index: true,
+    },
+    products: [
+      {
+        product: { type: Schema.Types.ObjectId, ref: "Product" },
+        dealAmount: Number,
+        quantity: {
+          type: Number,
+          default: 1,
+        },
+        beds: {
+          type: Number,
+          default: 0,
+        },
+        stage: {
+          type: String,
+          enum: [
+            "Demo",
+            "CPA",
+            "Committee",
+            "Trial",
+            "Pending Decision",
+            "Ghosted",
+            "Closed Lost",
+            "Closed Won",
+            "Implemented",
+            "No Longer Buying",
+          ],
+          default: "Demo",
+        },
+        expectedCloseDate: Date,
+        dealDate: {
+          type: Date,
+          default: Date.now,
+        },
       },
-      beds: {
-        type: Number,
-        default: 0
-      },
-      stage: {
-        type: String,
-        enum: [
-          "Demo",
-          "CPA",
-          "Committee",
-          "Trial",
-          "Pending Decision",
-          "Ghosted",
-          "Closed Lost",
-          "Closed Won",
-          "Implemented"
-        ],
-        default: "Demo"
-      },
-      expectedCloseDate: Date,
-      dealDate: {
-        type: Date,
-        default: Date.now
-      }
-    }
-  ],
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ],
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    notes: {
+      type: String,
+      trim: true,
+    },
   },
-  notes: {
-    type: String,
-    trim: true
-  }
-}, {
-  timestamps: true
-});
+  {
+    timestamps: true,
+  },
+);
 
-export default mongoose.model<IDeal>('Deal', DealSchema);
+export default mongoose.model<IDeal>("Deal", DealSchema);

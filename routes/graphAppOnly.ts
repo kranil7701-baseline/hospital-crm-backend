@@ -12,7 +12,7 @@ import { protect } from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
 
-router.get("/messages/:email", protect, getMailboxMessages);
+router.get("/messages/:email", protect, getMailboxMessages); 
 
 router.get("/sent-emails", protect, getSentEmailsFromDB);
 router.get("/received-emails", protect, getReceivedEmailsFromDB);

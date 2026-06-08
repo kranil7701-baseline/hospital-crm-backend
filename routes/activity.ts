@@ -11,4 +11,4 @@ router.get('/all-activities', getActivities);
 router.delete('/delete', deleteActivity);
 router.post('/create', createActivity);
 
-export default router;
+export default router; 

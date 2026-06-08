@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 export const getCallLogs = async (
   req: Request,
   res: Response,
-): Promise<void> => {
+): Promise<void> => { 
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;

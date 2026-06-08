@@ -10,7 +10,7 @@ export enum DocumentCategory {
 
 export interface IDocument extends Document {
     name: string;
-    category: DocumentCategory;
+    category: DocumentCategory; 
     fileUrl: string;
     filename: string;
     hospital: mongoose.Types.ObjectId;
