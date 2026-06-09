@@ -65,22 +65,22 @@ export const getDeals = async (
 
       ...(productIds.length > 0
         ? [
-            {
-              $match: {
-                "products.product": { $in: productIds },
-              },
+          {
+            $match: {
+              "products.product": { $in: productIds },
             },
-          ]
+          },
+        ]
         : []),
 
       ...(dealStages.length > 0
         ? [
-            {
-              $match: {
-                "products.stage": { $in: dealStages },
-              },
+          {
+            $match: {
+              "products.stage": { $in: dealStages },
             },
-          ]
+          },
+        ]
         : []),
 
       {
@@ -95,30 +95,30 @@ export const getDeals = async (
 
       ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
         ? [
-            {
-              $match: {
-                "hospital.gpo": new mongoose.Types.ObjectId(gpoId),
-              },
+          {
+            $match: {
+              "hospital.gpo": new mongoose.Types.ObjectId(gpoId),
             },
-          ]
+          },
+        ]
         : []),
 
       ...(searchQuery
         ? [
-            {
-              $match: {
-                $or: [
-                  { "products.stage": { $regex: searchQuery, $options: "i" } },
-                  {
-                    "hospital.hospitalName": {
-                      $regex: searchQuery,
-                      $options: "i",
-                    },
+          {
+            $match: {
+              $or: [
+                { "products.stage": { $regex: searchQuery, $options: "i" } },
+                {
+                  "hospital.hospitalName": {
+                    $regex: searchQuery,
+                    $options: "i",
                   },
-                ],
-              },
+                },
+              ],
             },
-          ]
+          },
+        ]
         : []),
 
       {
@@ -126,20 +126,20 @@ export const getDeals = async (
           deals: [
             ...(usePaginationFilter
               ? [
-                  {
-                    $match: {
-                      "products.stage": {
-                        $nin: [
-                          "Closed Won",
-                          "Closed Lost",
-                          "Implemented",
-                          "No Longer Buying",
-                          "Ghosted",
-                        ],
-                      },
+                {
+                  $match: {
+                    "products.stage": {
+                      $nin: [
+                        "Closed Won",
+                        "Closed Lost",
+                        "Implemented",
+                        "No Longer Buying",
+                        "Ghosted",
+                      ],
                     },
                   },
-                ]
+                },
+              ]
               : []),
             {
               $lookup: {
@@ -230,19 +230,19 @@ export const getDeals = async (
           totalDealsCount: [
             ...(usePaginationFilter
               ? [
-                  {
-                    $match: {
-                      "products.stage": {
-                        $nin: [
-                          "Closed Won",
-                          "Closed Lost",
-                          "Implemented",
-                          "No Longer Buying",
-                        ],
-                      },
+                {
+                  $match: {
+                    "products.stage": {
+                      $nin: [
+                        "Closed Won",
+                        "Closed Lost",
+                        "Implemented",
+                        "No Longer Buying",
+                      ],
                     },
                   },
-                ]
+                },
+              ]
               : []),
             { $count: "count" },
           ],
@@ -250,19 +250,19 @@ export const getDeals = async (
           totalHospitals: [
             ...(usePaginationFilter
               ? [
-                  {
-                    $match: {
-                      "products.stage": {
-                        $nin: [
-                          "Closed Won",
-                          "Closed Lost",
-                          "Implemented",
-                          "No Longer Buying",
-                        ],
-                      },
+                {
+                  $match: {
+                    "products.stage": {
+                      $nin: [
+                        "Closed Won",
+                        "Closed Lost",
+                        "Implemented",
+                        "No Longer Buying",
+                      ],
                     },
                   },
-                ]
+                },
+              ]
               : []),
             { $group: { _id: "$hospital._id" } },
             { $count: "count" },
@@ -307,12 +307,12 @@ export const getDeals = async (
             // 🔥 USER FILTER (important)
             ...(userId && mongoose.Types.ObjectId.isValid(userId)
               ? [
-                  {
-                    $match: {
-                      user: new mongoose.Types.ObjectId(userId),
-                    },
+                {
+                  $match: {
+                    user: new mongoose.Types.ObjectId(userId),
                   },
-                ]
+                },
+              ]
               : []),
             {
               $lookup: {
@@ -326,12 +326,12 @@ export const getDeals = async (
 
             ...(gpoId && mongoose.Types.ObjectId.isValid(gpoId)
               ? [
-                  {
-                    $match: {
-                      "hospitalDoc.gpo": new mongoose.Types.ObjectId(gpoId),
-                    },
+                {
+                  $match: {
+                    "hospitalDoc.gpo": new mongoose.Types.ObjectId(gpoId),
                   },
-                ]
+                },
+              ]
               : []),
 
             { $unwind: "$products" },
@@ -352,8 +352,8 @@ export const getDeals = async (
             $cond: [
               productIds.length > 0
                 ? {
-                    $in: ["$_id", productIds],
-                  }
+                  $in: ["$_id", productIds],
+                }
                 : true,
               {
                 $sum: "$dealData.products.dealAmount",
@@ -828,8 +828,8 @@ export const getDashboardStats = async (
     const hospitalFilter = isAdminOrCustomerSuccessOrExecutive
       ? {}
       : {
-          $or: [{ user: objectUserId }, { _id: { $in: matchedHospitalIds } }],
-        };
+        $or: [{ user: objectUserId }, { _id: { $in: matchedHospitalIds } }],
+      };
 
     // =========================
     // 🔥 BASIC COUNTS
@@ -858,6 +858,7 @@ export const getDashboardStats = async (
       "Closed Lost",
       "Ghosted",
       "Implemented",
+      "No Longer Buying",
     ];
 
     // =========================
@@ -887,6 +888,7 @@ export const getDashboardStats = async (
                             "Closed Lost",
                             "Ghosted",
                             "Implemented",
+                            "No Longer Buying",
                           ],
                         ],
                       },
@@ -905,6 +907,7 @@ export const getDashboardStats = async (
                           { $ne: ["$products.stage", "Implemented"] },
                           { $ne: ["$products.stage", "Closed Lost"] },
                           { $ne: ["$products.stage", "Ghosted"] },
+                          { $ne: ["$products.stage", "No Longer Buying"] },
                         ],
                       },
                       1,
@@ -1148,12 +1151,12 @@ export const getClosedWonDeals = async (
       // Search by hospital name
       ...(search
         ? [
-            {
-              $match: {
-                "hospital.hospitalName": { $regex: search, $options: "i" },
-              },
+          {
+            $match: {
+              "hospital.hospitalName": { $regex: search, $options: "i" },
             },
-          ]
+          },
+        ]
         : []),
 
       {
@@ -1334,15 +1337,15 @@ export const getImplementedDeals = async (
 
       ...(search
         ? [
-            {
-              $match: {
-                "hospital.hospitalName": {
-                  $regex: search,
-                  $options: "i",
-                },
+          {
+            $match: {
+              "hospital.hospitalName": {
+                $regex: search,
+                $options: "i",
               },
             },
-          ]
+          },
+        ]
         : []),
 
       {
@@ -1549,6 +1552,7 @@ export const DealStageCounts = async (
       "Closed Lost",
       "Closed Won",
       "Implemented",
+      "No Longer Buying",
     ];
 
     const stageCountsResult = await Deal.aggregate([
