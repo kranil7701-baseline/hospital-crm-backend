@@ -23,7 +23,6 @@ router.post("/create", createDeal);
 
 router.put("/stage/update-deal-stage", updateDealProductStage);
 
-// Single Hospital Page
 router.delete("/delete/product", removeDeal);
 router.post("/add/product", addProductToDeal);
 router.put("/update", updateDeal);

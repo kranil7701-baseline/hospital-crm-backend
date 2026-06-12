@@ -184,7 +184,8 @@ export const getHospitalByHospitalId = async (
 
     const dealBedsTotal = productInfo.reduce((sum, p) => sum + p.beds, 0);
     const icuBeds = hospital.ICUBeds || 0;
-    const totalBeds = icuBeds + dealBedsTotal;
+    // const totalBeds = icuBeds + dealBedsTotal;
+    const totalBeds = hospital.totalBeds || 0;
 
     // 4. Final response
     const responseData = {
@@ -482,12 +483,12 @@ export const getAllHospitalsDeals = async (
 
           ...(productStage
             ? [
-                {
-                  $match: {
-                    "products.stage": productStage,
-                  },
+              {
+                $match: {
+                  "products.stage": productStage,
                 },
-              ]
+              },
+            ]
             : []),
 
           {
