@@ -167,12 +167,17 @@ export const getHospitalByHospitalId = async (
     );
 
     // 3. Get deals
-    const deals = await Deal.find({ hospital: id })
+    const rawDeals = await Deal.find({ hospital: id })
       .select("products")
       .populate({
         path: "products.product",
         select: "name",
       });
+
+    const deals = rawDeals.map((deal: any) => {
+      const dealObj = deal.toObject();
+      return dealObj;
+    });
 
     // Extract all deal products and their beds across every deal
     const productInfo = deals.flatMap((deal: any) =>

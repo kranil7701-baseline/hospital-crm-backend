@@ -195,6 +195,7 @@ export const getDeals = async (
                   city: "$hospital.city",
                   state: "$hospital.state",
                   zip: "$hospital.zip",
+                  totalBeds: "$hospital.totalBeds",
                   idn: {
                     _id: "$idn._id",
                     name: "$idn.name",
@@ -210,7 +211,7 @@ export const getDeals = async (
                   name: "$products.product.name",
                 },
                 dealAmount: "$products.dealAmount",
-                quantity: "$products.quantity",
+                quantity: "$hospital.totalBeds",
                 beds: "$products.beds",
                 stage: "$products.stage",
                 user: {
@@ -432,7 +433,12 @@ export const createDeal = async (
     const dealsToInsert = products.map((product: any) => ({
       ...rest,
       user: rest.userId || req.body.userId || req.body.user || req.user?._id,
-      products: [{ ...product, beds: beds ? Number(beds) : 0 }], // only ONE product per document
+      products: [
+        {
+          ...product,
+          beds: product.beds !== undefined ? Number(product.beds) : (beds ? Number(beds) : 0),
+        },
+      ],
     }));
 
     const createdDeals = await Deal.insertMany(dealsToInsert);
@@ -1163,6 +1169,7 @@ export const getClosedWonDeals = async (
         $project: {
           _id: "$hospital._id",
           hospitalName: "$hospital.hospitalName",
+          totalBeds: "$hospital.totalBeds",
           products: 1,
           totalAmount: 1,
           productsCount: 1,
@@ -1174,7 +1181,15 @@ export const getClosedWonDeals = async (
     ];
 
     const result = await Deal.aggregate(pipeline);
-    const data = result || [];
+    const data = (result || []).map((h: any) => {
+      if (h.products) {
+        h.products = h.products.map((p: any) => ({
+          ...p,
+          quantity: h.totalBeds || 0,
+        }));
+      }
+      return h;
+    });
 
     const overallStats = data.reduce(
       (acc: any, hospital: any) => ({
@@ -1353,6 +1368,7 @@ export const getImplementedDeals = async (
           _id: 1,
           hospitalId: "$hospital._id",
           hospitalName: "$hospital.hospitalName",
+          totalBeds: "$hospital.totalBeds",
           products: 1,
           totalAmount: 1,
           productsCount: 1,
@@ -1399,7 +1415,16 @@ export const getImplementedDeals = async (
 
     const facetResult = result[0] || {};
 
-    const data = facetResult.data || [];
+    let data = facetResult.data || [];
+    data = data.map((d: any) => {
+      if (d.products) {
+        d.products = d.products.map((p: any) => ({
+          ...p,
+          quantity: d.totalBeds || 0,
+        }));
+      }
+      return d;
+    });
 
     const totalCount = facetResult.totalCount?.[0]?.count || 0;
 

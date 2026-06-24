@@ -74,7 +74,7 @@ export const getIDNHospitalDealsbyID = async (
       {
         $lookup: {
           from: "deals",
-          let: { hospitalId: "$_id" },
+          let: { hospitalId: "$_id", totalBeds: "$totalBeds" },
           pipeline: [
             { $match: { $expr: { $eq: ["$hospital", "$$hospitalId"] } } },
             {
@@ -82,14 +82,14 @@ export const getIDNHospitalDealsbyID = async (
             },
             ...(productId && mongoose.Types.ObjectId.isValid(productId)
               ? [
-                  {
-                    $match: {
-                      "products.product": new mongoose.Types.ObjectId(
-                        productId,
-                      ),
-                    },
+                {
+                  $match: {
+                    "products.product": new mongoose.Types.ObjectId(
+                      productId,
+                    ),
                   },
-                ]
+                },
+              ]
               : []),
             {
               $lookup: {
@@ -106,7 +106,6 @@ export const getIDNHospitalDealsbyID = async (
                 productId: "$product._id",
                 productName: "$product.name",
                 dealAmount: "$products.dealAmount",
-                quantity: "$products.quantity",
                 beds: "$products.beds",
                 stage: "$products.stage",
                 expectedCloseDate: "$products.expectedCloseDate",
@@ -163,12 +162,12 @@ export const getIDNHospitalDealsbyID = async (
         { $unwind: { path: "$products", preserveNullAndEmptyArrays: true } },
         ...(productId && mongoose.Types.ObjectId.isValid(productId)
           ? [
-              {
-                $match: {
-                  "products.product": new mongoose.Types.ObjectId(productId),
-                },
+            {
+              $match: {
+                "products.product": new mongoose.Types.ObjectId(productId),
               },
-            ]
+            },
+          ]
           : []),
         { $group: { _id: "$_id" } },
         { $count: "totalDeals" },
@@ -210,8 +209,8 @@ export const getIDNs = async (req: Request, res: Response): Promise<void> => {
     // Search query (adjust fields based on your schema)
     const searchQuery = search
       ? {
-          $or: [{ name: { $regex: search, $options: "i" } }],
-        }
+        $or: [{ name: { $regex: search, $options: "i" } }],
+      }
       : {};
 
     // Fetch IDNs
@@ -394,14 +393,14 @@ export const getAllIDNsDeals00 = async (
               $match: {
                 $expr: userObjectId
                   ? {
-                      $and: [
-                        { $eq: ["$idn", "$$idnId"] },
-                        { $eq: ["$user", userObjectId] },
-                      ],
-                    }
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] },
+                    ],
+                  }
                   : {
-                      $eq: ["$idn", "$$idnId"],
-                    },
+                    $eq: ["$idn", "$$idnId"],
+                  },
               },
             },
             {
@@ -421,12 +420,12 @@ export const getAllIDNsDeals00 = async (
       // 🔥 STEP 2: Remove empty IDNs ONLY if userId exists
       ...(userObjectId
         ? [
-            {
-              $match: {
-                "hospitals.0": { $exists: true },
-              },
+          {
+            $match: {
+              "hospitals.0": { $exists: true },
             },
-          ]
+          },
+        ]
         : []),
 
       // 🔥 STEP 3: Extract hospitalIds
@@ -633,14 +632,14 @@ export const getAllIDNsDeals00 = async (
               $match: {
                 $expr: userObjectId
                   ? {
-                      $and: [
-                        { $eq: ["$idn", "$$idnId"] },
-                        { $eq: ["$user", userObjectId] },
-                      ],
-                    }
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] },
+                    ],
+                  }
                   : {
-                      $eq: ["$idn", "$$idnId"],
-                    },
+                    $eq: ["$idn", "$$idnId"],
+                  },
               },
             },
           ],
@@ -649,12 +648,12 @@ export const getAllIDNsDeals00 = async (
       },
       ...(userObjectId
         ? [
-            {
-              $match: {
-                "hospitals.0": { $exists: true },
-              },
+          {
+            $match: {
+              "hospitals.0": { $exists: true },
             },
-          ]
+          },
+        ]
         : []),
       { $count: "total" },
     ];
@@ -729,14 +728,14 @@ export const getAllIDNsDeals = async (
               $match: {
                 $expr: userObjectId
                   ? {
-                      $and: [
-                        { $eq: ["$idn", "$$idnId"] },
-                        { $eq: ["$user", userObjectId] },
-                      ],
-                    }
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] },
+                    ],
+                  }
                   : {
-                      $eq: ["$idn", "$$idnId"],
-                    },
+                    $eq: ["$idn", "$$idnId"],
+                  },
               },
             },
             {
@@ -750,12 +749,12 @@ export const getAllIDNsDeals = async (
       // 🔥 STEP 2: Remove empty IDNs ONLY if userId exists
       ...(userObjectId
         ? [
-            {
-              $match: {
-                "hospitals.0": { $exists: true },
-              },
+          {
+            $match: {
+              "hospitals.0": { $exists: true },
             },
-          ]
+          },
+        ]
         : []),
 
       // 🔥 STEP 3: Extract hospitalIds
@@ -823,14 +822,14 @@ export const getAllIDNsDeals = async (
               $match: {
                 $expr: userObjectId
                   ? {
-                      $and: [
-                        { $eq: ["$idn", "$$idnId"] },
-                        { $eq: ["$user", userObjectId] },
-                      ],
-                    }
+                    $and: [
+                      { $eq: ["$idn", "$$idnId"] },
+                      { $eq: ["$user", userObjectId] },
+                    ],
+                  }
                   : {
-                      $eq: ["$idn", "$$idnId"],
-                    },
+                    $eq: ["$idn", "$$idnId"],
+                  },
               },
             },
           ],
@@ -839,12 +838,12 @@ export const getAllIDNsDeals = async (
       },
       ...(userObjectId
         ? [
-            {
-              $match: {
-                "hospitals.0": { $exists: true },
-              },
+          {
+            $match: {
+              "hospitals.0": { $exists: true },
             },
-          ]
+          },
+        ]
         : []),
       { $count: "total" },
     ];

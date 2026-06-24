@@ -47,7 +47,7 @@ const DealSchema: Schema = new Schema(
         dealAmount: Number,
         quantity: {
           type: Number,
-          default: 1,
+          default: 0,
         },
         beds: {
           type: Number,

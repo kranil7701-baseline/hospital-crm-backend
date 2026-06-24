@@ -75,7 +75,7 @@ export const getGPOHospitalDealsbyID = async (
       {
         $lookup: {
           from: "deals",
-          let: { hospitalId: "$_id" },
+          let: { hospitalId: "$_id", totalBeds: "$totalBeds" },
           pipeline: [
             {
               $match: {
@@ -111,7 +111,6 @@ export const getGPOHospitalDealsbyID = async (
                 productId: "$product._id",
                 productName: "$product.name",
                 dealAmount: "$products.dealAmount",
-                quantity: "$products.quantity",
                 beds: "$products.beds",
                 stage: "$products.stage",
                 expectedCloseDate: "$products.expectedCloseDate",
