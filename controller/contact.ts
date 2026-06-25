@@ -172,20 +172,14 @@ export const createContact = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { email, phoneNumber } = req.body;
+    const { email, hospital } = req.body;
 
-    // Check if contact with same email or phone number already exists
-    const existingContact = await Contact.findOne({
-      $or: [{ email }, { phoneNumber }],
-    });
+    const existingContact = await Contact.findOne({ email, hospital });
 
     if (existingContact) {
       res.status(400).json({
         success: false,
-        message:
-          existingContact.email === email
-            ? "Contact with this email already exists"
-            : "Contact with this phone number already exists",
+        message: "This contact is already associated with this hospital",
       });
       return;
     }

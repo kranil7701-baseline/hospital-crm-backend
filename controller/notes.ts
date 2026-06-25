@@ -2,9 +2,8 @@ import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Notes from "../model/Notes.ts";
 import mongoose from "mongoose";
-import { sendPushToUsers } from "./pushNotification.ts";
-import User from "../model/User.ts";
 import dotenv from "dotenv";
+import { handleMentions } from "../helper/mentionNotification.ts";
 dotenv.config();
 
 export const getNotes = async (req: Request, res: Response): Promise<void> => {
@@ -112,37 +111,8 @@ export const createNote = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const noteText = req.body.note || "";
-
-    const mentions = noteText.match(/@([\w\s]+)/g) || [];
-
-    const cleanedMentions = mentions.map((m: string) =>
-      m.replace("@", "").trim().toLowerCase(),
-    );
-
-    if (cleanedMentions.length > 0) {
-      try {
-        const validUsers = await User.find({
-          name: {
-            $in: cleanedMentions.map(
-              (name: string) => new RegExp(`^${name}$`, "i"),
-            ),
-          },
-        });
-
-        if (validUsers.length > 0) {
-          const userIds = validUsers.map((u) => u._id.toString());
-
-          await sendPushToUsers(userIds, {
-            title: `${req.user?.name} mentioned you in a note`,
-            message: noteText,
-            url: `${process.env.FRONTEND_URL}`,
-          });
-        }
-      } catch (err) {
-        console.error("Error sending mention notifications", err);
-      }
-    }
+    const noteText = req.body.notes || req.body.note || "";
+    await handleMentions(req, noteText, "note", req.body.hospital);
 
     const noteData = {
       ...req.body,
@@ -164,7 +134,7 @@ export const createNote = async (
 };
 
 export const updateNote = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -178,6 +148,9 @@ export const updateNote = async (
       res.status(404).json({ success: false, message: "Note not found" });
       return;
     }
+
+    const noteText = req.body.notes || req.body.note || "";
+    await handleMentions(req, noteText, "note", updatedNote.hospital?._id?.toString() || req.body.hospital);
 
     res.status(200).json({ success: true, data: updatedNote });
   } catch (error: any) {

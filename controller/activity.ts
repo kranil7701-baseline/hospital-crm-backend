@@ -8,6 +8,8 @@ import { sendPushToUsers } from "./pushNotification.ts";
 import User from "../model/User.ts";
 import dotenv from "dotenv";
 import { sendGraphEmail } from "../helper/graphEmail.ts";
+import { handleMentions } from "../helper/mentionNotification.ts";
+
 
 dotenv.config();
 
@@ -459,78 +461,8 @@ export const createActivity = async (
     }
 
     // ✅ Mention detection
-    const textToSearch = data.notes || data.note || data.taskName || "";
-
-    const mentions = textToSearch.match(/@([A-Za-z]+\s[A-Za-z]+)/g) || [];
-
-    const cleanedMentions = mentions.map((m: string) =>
-      m.replace("@", "").trim().toLowerCase(),
-    );
-
-    if (cleanedMentions.length > 0) {
-      try {
-        const validUsers = await User.find({
-          name: {
-            $in: cleanedMentions.map(
-              (name: string) => new RegExp(`^${name}$`, "i"),
-            ),
-          },
-        });
-
-        const mentionedHospital = data.hospital;
-
-        if (validUsers.length > 0) {
-          const userIds = validUsers.map((u) => u._id.toString());
-
-          await sendPushToUsers(userIds, {
-            title: `${(req as any).user?.name} mentioned you in a ${type}`,
-
-            message: textToSearch,
-
-            url: `${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}`,
-          });
-
-          // ✅ Email Notifications
-          for (const user of validUsers) {
-            if (user.email && (req as any).user?.email) {
-              sendGraphEmail(
-                (req as any).user.email,
-
-                user.email,
-
-                `${(req as any).user.name} mentioned you in a ${type}`,
-
-                `<p>Hello ${user.name},</p>
-
-                 <p>
-                   <strong>${
-                     (req as any).user.name
-                   }</strong> mentioned you in a 
-                   <strong>${type}</strong>:
-                 </p>
-
-                 <blockquote style="border-left: 4px solid #ccc; padding-left: 10px; margin: 10px 0;">
-                   ${textToSearch}
-                 </blockquote>
-
-                 <p>
-                   You can view it here:
-                   <a href="${
-                     process.env.FRONTEND_URL
-                   }/hospitals/${mentionedHospital}">
-                     ${process.env.FRONTEND_URL}/hospitals/${mentionedHospital}
-                   </a>
-                 </p>`,
-              ).catch((err) =>
-                console.error(`Failed to send email to ${user.email}`, err),
-              );
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Error sending mention notifications", err);
-      }
-    }
+    const textToSearch = data.notes || data.note || data.description || data.title || "";
+    await handleMentions(req, textToSearch, type, data.hospital);
 
     // ✅ Create Activity
     const newActivity = new (model as any)(activityData);

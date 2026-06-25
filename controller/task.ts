@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Task from "../model/Task.ts";
 import mongoose from "mongoose";
+import { handleMentions } from "../helper/mentionNotification.ts";
 
 export const getDashboardTasks = async (
   req: AuthRequest,
@@ -245,6 +246,9 @@ export const createTask = async (
     await newTask.save();
     await newTask.populate("hospital", "hospitalName");
 
+    const taskText = `${req.body.title || ""} ${req.body.description || ""}`;
+    await handleMentions(req, taskText, "task", req.body.hospital);
+
     res.status(201).json({ success: true, data: newTask });
   } catch (error: any) {
     res.status(400).json({
@@ -256,7 +260,7 @@ export const createTask = async (
 };
 
 export const updateTask = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -270,6 +274,9 @@ export const updateTask = async (
       res.status(404).json({ success: false, message: "Task not found" });
       return;
     }
+
+    const taskText = `${req.body.title || ""} ${req.body.description || ""}`;
+    await handleMentions(req, taskText, "task", updatedTask.hospital?._id?.toString() || req.body.hospital);
 
     res.status(200).json({ success: true, data: updatedTask });
   } catch (error: any) {

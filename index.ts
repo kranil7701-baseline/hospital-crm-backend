@@ -87,9 +87,29 @@ const connectDB = async () => {
   if (!cached.promise) {
     mongoose.set("bufferCommands", false);
 
-    cached.promise = mongoose.connect(MONGO_URI).then((mongoose) => {
+    cached.promise = mongoose.connect(MONGO_URI).then(async (m) => {
       console.log("✅ MongoDB Connected");
-      return mongoose;
+      try {
+        if (m.connection.db) {
+          await m.connection.db.collection("contacts").dropIndex("phoneNumber_1");
+          console.log("✅ Successfully dropped unique phoneNumber_1 index from Contact collection");
+        }
+      } catch (err: any) {
+        if (err.code !== 27 && err.codeName !== "IndexNotFound") {
+          console.error("Index drop info for phoneNumber_1:", err.message);
+        }
+      }
+      try {
+        if (m.connection.db) {
+          await m.connection.db.collection("contacts").dropIndex("email_1");
+          console.log("✅ Successfully dropped unique email_1 index from Contact collection");
+        }
+      } catch (err: any) {
+        if (err.code !== 27 && err.codeName !== "IndexNotFound") {
+          console.error("Index drop info for email_1:", err.message);
+        }
+      }
+      return m;
     });
   }
 
