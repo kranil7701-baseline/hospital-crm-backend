@@ -461,8 +461,12 @@ export const createActivity = async (
     }
 
     // ✅ Mention detection
-    const textToSearch = data.notes || data.note || data.description || data.title || "";
-    await handleMentions(req, textToSearch, type, data.hospital);
+    if (type.toLowerCase() === "note" || type.toLowerCase() === "task") {
+      const textToSearch = type.toLowerCase() === "note"
+        ? (data.notes || data.note || "")
+        : `${data.title || ""} ${data.description || ""}`;
+      await handleMentions(req, textToSearch, type, data.hospital);
+    }
 
     // ✅ Create Activity
     const newActivity = new (model as any)(activityData);
