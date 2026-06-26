@@ -28,6 +28,8 @@ export const getDeals = async (
     const skip = page ? (page - 1) * (limit || 15) : 0;
     const usePaginationFilter = page !== null && limit !== null;
     const dealStageRaw = req.query.dealStage;
+    const sortBy = (req.query.sortBy as string) || "dealAmount";
+    const sortOrder = (req.query.sortOrder as string) === "asc" ? 1 : -1;
 
     const dealStages = (
       Array.isArray(dealStageRaw) ? dealStageRaw : [dealStageRaw]
@@ -205,7 +207,6 @@ export const getDeals = async (
                     name: "$gpo.name",
                   },
                 },
-                // product: "$products.product",
                 product: {
                   _id: "$products.product._id",
                   name: "$products.product.name",
@@ -219,10 +220,11 @@ export const getDeals = async (
                   name: "$user.name",
                 },
                 createdAt: 1,
+                updatedAt: 1,
                 expectedCloseDate: "$products.expectedCloseDate",
               },
             },
-            { $sort: { dealAmount: -1 } },
+            { $sort: { [sortBy]: sortOrder } },
             ...(page || limit
               ? [{ $skip: skip }, ...(limit ? [{ $limit: limit }] : [])]
               : []),
