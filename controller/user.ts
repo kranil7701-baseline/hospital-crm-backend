@@ -18,16 +18,16 @@ export const getUsers = async (
 
     const searchQuery = search
       ? {
-          $or: [
-            { name: { $regex: search, $options: "i" } },
-            { email: { $regex: search, $options: "i" } },
-          ],
-        }
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ],
+      }
       : {};
 
     // Fetch users
     const users = await User.find(searchQuery)
-      .select("-email -role -createdAt -updatedAt -__v")
+      .select("-role -createdAt -updatedAt -__v")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -65,11 +65,11 @@ export const getUsersAdmin = async (
 
     const searchQuery: any = search
       ? {
-          $or: [
-            { name: { $regex: search, $options: "i" } },
-            { email: { $regex: search, $options: "i" } },
-          ],
-        }
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+        ],
+      }
       : {};
 
     // Exclude the current user

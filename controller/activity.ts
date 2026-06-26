@@ -4,10 +4,7 @@ import Task from "../model/Task.ts";
 import Notes from "../model/Notes.ts";
 import CallLogs from "../model/CallLogs.ts";
 import mongoose from "mongoose";
-import { sendPushToUsers } from "./pushNotification.ts";
-import User from "../model/User.ts";
 import dotenv from "dotenv";
-import { sendGraphEmail } from "../helper/graphEmail.ts";
 import { handleMentions } from "../helper/mentionNotification.ts";
 
 
@@ -34,11 +31,28 @@ export const getDashboardActivity = async (
     // 🔥 Check role
     const isAdminOrExecutive = userRole === "Admin" || userRole === "Executive";
 
-    // 🔥 Dynamic match
-    const matchStage = isAdminOrExecutive ? {} : { user: objectUserId };
+    let mentionRegexPattern = "";
+    if (userId && req.user?.email) {
+      const userEmail = req.user.email;
+      const emailEscaped = userEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      mentionRegexPattern = `(?:^|\\s)@${emailEscaped}(?:\\b|\\s|$)`;
+    }
+
+    const noteMatchStage = isAdminOrExecutive
+      ? {}
+      : (mentionRegexPattern
+        ? {
+          $or: [
+            { user: objectUserId },
+            { notes: { $regex: mentionRegexPattern, $options: "i" } },
+          ],
+        }
+        : { user: objectUserId });
+
+    const callLogMatchStage = isAdminOrExecutive ? {} : { user: objectUserId };
 
     const pipeline: any[] = [
-      { $match: matchStage },
+      { $match: noteMatchStage },
 
       {
         $addFields: {
@@ -51,7 +65,7 @@ export const getDashboardActivity = async (
           coll: "calllogs",
 
           pipeline: [
-            { $match: matchStage },
+            { $match: callLogMatchStage },
 
             {
               $addFields: {
@@ -484,6 +498,98 @@ export const createActivity = async (
     res.status(400).json({
       success: false,
       message: `Failed to create ${req.body.type || "activity"}`,
+      error: error.message,
+    });
+  }
+};
+
+export const updateActivity = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id, type, data } = req.body;
+
+    if (!id || !type || !data) {
+      res.status(400).json({
+        success: false,
+        message: "ID, type, and data are required",
+      });
+      return;
+    }
+
+    let model;
+    let populateOptions: any = [
+      {
+        path: "hospital",
+        select: "hospitalName",
+      },
+    ];
+
+    switch (type.toLowerCase()) {
+      case "task":
+        model = Task;
+        break;
+
+      case "note":
+        model = Notes;
+        break;
+
+      case "calllog":
+        model = CallLogs;
+        if (data.contact && data.contact !== "") {
+          populateOptions.push({
+            path: "contact",
+            select: "firstName lastName",
+          });
+        }
+        break;
+
+      default:
+        res.status(400).json({
+          success: false,
+          message: "Invalid activity type",
+        });
+        return;
+    }
+
+    const query: any = {
+      _id: new mongoose.Types.ObjectId(id),
+    };
+
+    if ((req as any).user?.role !== "Admin") {
+      query.user = (req as any).user?._id;
+    }
+
+    if (type.toLowerCase() === "note" || type.toLowerCase() === "task") {
+      const textToSearch = type.toLowerCase() === "note"
+        ? (data.notes || data.note || "")
+        : `${data.title || ""} ${data.description || ""}`;
+      await handleMentions(req, textToSearch, type, data.hospital);
+    }
+
+    const updatedActivity = await (model as any).findOneAndUpdate(query, data, {
+      new: true,
+      runValidators: true,
+    }).populate(populateOptions);
+
+    if (!updatedActivity) {
+      res.status(404).json({
+        success: false,
+        message: "Activity not found or you don't have permission to update it",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `${type} updated successfully`,
+      data: updatedActivity,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update activity",
       error: error.message,
     });
   }

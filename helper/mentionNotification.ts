@@ -15,8 +15,9 @@ export const handleMentions = async (
     const mentionedUsers = [];
 
     for (const user of activeUsers) {
-      const nameEscaped = user.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      const regex = new RegExp(`(?:^|\\s)@${nameEscaped}(?:\\b|\\s|$)`, 'i');
+      if (!user.email) continue;
+      const emailEscaped = user.email.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(`(?:^|\\s)@${emailEscaped}(?:\\b|\\s|$)`, 'i');
       if (regex.test(text)) {
         mentionedUsers.push(user);
       }

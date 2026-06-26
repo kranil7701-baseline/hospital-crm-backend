@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Task from "../model/Task.ts";
+import User from "../model/User.ts";
 import mongoose from "mongoose";
 import { handleMentions } from "../helper/mentionNotification.ts";
 
@@ -29,8 +30,24 @@ export const getDashboardTasks = async (
 
     const matchStage: any = {};
 
-    if (!isAdminOrExecutive) {
-      matchStage.user = new mongoose.Types.ObjectId(userId);
+    let mentionRegexPattern = "";
+    if (userId && req.user?.email) {
+      const userEmail = req.user.email;
+      const emailEscaped = userEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      mentionRegexPattern = `(?:^|\\s)@${emailEscaped}(?:\\b|\\s|$)`;
+    }
+
+    if (!isAdminOrExecutive && userId) {
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+      if (mentionRegexPattern) {
+        matchStage.$or = [
+          { user: userObjectId },
+          { title: { $regex: mentionRegexPattern, $options: "i" } },
+          { description: { $regex: mentionRegexPattern, $options: "i" } },
+        ];
+      } else {
+        matchStage.user = userObjectId;
+      }
     }
 
     const sevenDaysAgo = new Date();
@@ -41,20 +58,34 @@ export const getDashboardTasks = async (
     };
 
     if (search) {
-      matchStage.$or = [
-        {
-          title: {
-            $regex: search,
-            $options: "i",
+      if (matchStage.$or) {
+        const userOrMentions = matchStage.$or;
+        delete matchStage.$or;
+        matchStage.$and = [
+          { $or: userOrMentions },
+          {
+            $or: [
+              { title: { $regex: search, $options: "i" } },
+              { description: { $regex: search, $options: "i" } },
+            ],
           },
-        },
-        {
-          description: {
-            $regex: search,
-            $options: "i",
+        ];
+      } else {
+        matchStage.$or = [
+          {
+            title: {
+              $regex: search,
+              $options: "i",
+            },
           },
-        },
-      ];
+          {
+            description: {
+              $regex: search,
+              $options: "i",
+            },
+          },
+        ];
+      }
     }
 
     const pipeline: any[] = [
@@ -136,8 +167,26 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     const skip = (page - 1) * limit;
     const matchStage: any = {};
 
+    let mentionRegexPattern = "";
     if (userId) {
-      matchStage.user = new mongoose.Types.ObjectId(userId);
+      const targetUser = await User.findById(userId);
+      if (targetUser && targetUser.email) {
+        const emailEscaped = targetUser.email.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        mentionRegexPattern = `(?:^|\\s)@${emailEscaped}(?:\\b|\\s|$)`;
+      }
+    }
+
+    if (userId) {
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+      if (mentionRegexPattern) {
+        matchStage.$or = [
+          { user: userObjectId },
+          { title: { $regex: mentionRegexPattern, $options: "i" } },
+          { description: { $regex: mentionRegexPattern, $options: "i" } },
+        ];
+      } else {
+        matchStage.user = userObjectId;
+      }
     }
 
     if (hospitalId) {
@@ -145,10 +194,24 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (search) {
-      matchStage.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-      ];
+      if (matchStage.$or) {
+        const userOrMentions = matchStage.$or;
+        delete matchStage.$or;
+        matchStage.$and = [
+          { $or: userOrMentions },
+          {
+            $or: [
+              { title: { $regex: search, $options: "i" } },
+              { description: { $regex: search, $options: "i" } },
+            ],
+          },
+        ];
+      } else {
+        matchStage.$or = [
+          { title: { $regex: search, $options: "i" } },
+          { description: { $regex: search, $options: "i" } },
+        ];
+      }
     }
 
     const pipeline: any[] = [
