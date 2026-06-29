@@ -14,6 +14,7 @@ export const getContacts = async (
     const search = (req.query.search as string) || "";
     const userId = req.query.userId as string;
     const productId = req.query.productId as string;
+    const hospitalId = req.query.hospitalId as string;
 
     const skip = (page - 1) * limit;
 
@@ -27,9 +28,11 @@ export const getContacts = async (
         currentUser.role === UserRole.EXECUTIVE ||
         currentUser.role === UserRole.CUSTOMER_SUCCESS);
 
+    const matchStage: any = {};
+
     if (isAdminOrExecutive) {
       if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-        filter.user = userId;
+        matchStage.user = new mongoose.Types.ObjectId(userId);
       }
     } else {
       // Non-privileged users can only see their own contacts
@@ -37,26 +40,67 @@ export const getContacts = async (
         res.status(401).json({ success: false, message: "Unauthorized" });
         return;
       }
-      filter.user = String(currentUser._id);
+      matchStage.user = new mongoose.Types.ObjectId(String(currentUser._id));
     }
 
-    // product filter is still supported, but the product field will not be returned
+    // product filter is still supported
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      filter.product = productId;
+      matchStage.product = new mongoose.Types.ObjectId(productId);
+    }
+
+    if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
+      matchStage.hospital = new mongoose.Types.ObjectId(hospitalId);
     }
 
     if (search) {
-      filter.$or = [
+      matchStage.$or = [
         { firstName: { $regex: search, $options: "i" } },
         { lastName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { designation: { $regex: search, $options: "i" } },
         { phoneNumber: { $regex: search, $options: "i" } },
+        { "hospitalDetails.hospitalName": { $regex: search, $options: "i" } },
       ];
     }
 
-    const contacts = await Contact.find(filter)
-      .select("-createdAt -updatedAt -__v -isPrimary -product")
+    const matchedContacts = await Contact.aggregate([
+      {
+        $lookup: {
+          from: "hospitals",
+          localField: "hospital",
+          foreignField: "_id",
+          as: "hospitalDetails",
+        },
+      },
+      {
+        $unwind: {
+          path: "$hospitalDetails",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $match: matchStage,
+      },
+      {
+        $sort: {
+          firstName: 1,
+          lastName: 1,
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+        },
+      },
+    ]);
+
+    const matchedIds = matchedContacts.map((c) => c._id);
+    const total = matchedIds.length;
+    const paginatedIds = matchedIds.slice(skip, skip + limit);
+
+    const contacts = await Contact.find({ _id: { $in: paginatedIds } })
+      .select("-createdAt -updatedAt -__v -isPrimary")
+      .populate("product", "name")
       .populate({
         path: "hospital",
         select: "hospitalName gpo idn",
@@ -75,11 +119,7 @@ export const getContacts = async (
         firstName: 1,
         lastName: 1,
       })
-      .skip(skip)
-      .limit(limit)
       .lean();
-
-    const total = await Contact.countDocuments(filter);
 
     res.status(200).json({
       success: true,
@@ -255,7 +295,20 @@ export const updateContact = async (
     const updatedContact = await Contact.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
-    });
+    }).populate({
+      path: "hospital",
+      select: "hospitalName gpo idn",
+      populate: [
+        {
+          path: "gpo",
+          select: "name -_id",
+        },
+        {
+          path: "idn",
+          select: "name -_id",
+        },
+      ],
+    }).populate("product", "name");
 
     if (!updatedContact) {
       res.status(404).json({ success: false, message: "Contact not found" });

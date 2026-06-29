@@ -8,6 +8,7 @@ export interface IContact extends Document {
   hospital: mongoose.Types.ObjectId;
   product?: mongoose.Types.ObjectId[];
   phoneNumber: string;
+  secondaryPhoneNumber?: string;
   email: string;
   isPrimary: boolean;
   createdAt: Date;
@@ -45,6 +46,10 @@ const ContactSchema: Schema = new Schema(
       },
     ],
     phoneNumber: {
+      type: String,
+      trim: true,
+    },
+    secondaryPhoneNumber: {
       type: String,
       trim: true,
     },
