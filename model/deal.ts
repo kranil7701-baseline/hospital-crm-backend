@@ -17,6 +17,8 @@ export interface IDeal extends Document {
   idn: mongoose.Types.ObjectId;
   products: IDealProduct[];
   notes: string;
+  leadSource?: string;
+  leadSourceDetails?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -82,6 +84,14 @@ const DealSchema: Schema = new Schema(
       required: true,
     },
     notes: {
+      type: String,
+      trim: true,
+    },
+    leadSource: {
+      type: String,
+      trim: true,
+    },
+    leadSourceDetails: {
       type: String,
       trim: true,
     },

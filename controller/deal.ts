@@ -221,6 +221,8 @@ export const getDeals = async (
                 },
                 createdAt: 1,
                 updatedAt: 1,
+                leadSource: 1,
+                leadSourceDetails: 1,
                 expectedCloseDate: "$products.expectedCloseDate",
               },
             },
@@ -611,6 +613,8 @@ export const addProductToDeal = async (
       dealDate,
       idn,
       gpo,
+      leadSource,
+      leadSourceDetails,
     } = req.body;
 
     if (!hospitalId || !product || !idn || !gpo) {
@@ -639,7 +643,9 @@ export const addProductToDeal = async (
       hospital: hospitalId,
       idn,
       gpo,
-      user: (req as any).user?._id, // if using auth
+      user: (req as any).user?._id,
+      leadSource,
+      leadSourceDetails,
       products: [
         {
           product,
@@ -683,6 +689,8 @@ export const updateDeal = async (
       userId,
       beds,
       notes,
+      leadSource,
+      leadSourceDetails,
     } = req.body;
 
     if (!dealId) {
@@ -750,6 +758,14 @@ export const updateDeal = async (
     // notes
     if (notes !== undefined) {
       updateFields.notes = notes;
+    }
+
+    if (leadSource !== undefined) {
+      updateFields.leadSource = leadSource;
+    }
+
+    if (leadSourceDetails !== undefined) {
+      updateFields.leadSourceDetails = leadSourceDetails;
     }
 
     // only admin can change assigned user
