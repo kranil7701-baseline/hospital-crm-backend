@@ -6,6 +6,7 @@ export interface ICallLogs extends Document {
     notes: string;
     hospital: mongoose.Types.ObjectId;
     user: mongoose.Types.ObjectId;
+    product?: mongoose.Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -33,6 +34,10 @@ const CallLogsSchema: Schema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'User',
         required: true
+    },
+    product: {
+        type: Schema.Types.ObjectId,
+        ref: 'Product',
     }
 }, {
     timestamps: true

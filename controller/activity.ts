@@ -132,6 +132,21 @@ export const getDashboardActivity = async (
           preserveNullAndEmptyArrays: true,
         },
       },
+
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $unwind: {
+          path: "$product",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
     ];
 
     const combinedActivities = await Notes.aggregate(pipeline);
@@ -156,6 +171,7 @@ export const getActivities = async (
   try {
     const hospitalId = req.query.hospitalId as string;
     const userId = req.query.userId as string;
+    const productId = req.query.productId as string;
 
     // ✅ Pagination
     const page = parseInt(req.query.page as string) || 1;
@@ -180,6 +196,10 @@ export const getActivities = async (
 
     if (userId) {
       filter.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      filter.product = new mongoose.Types.ObjectId(productId);
     }
 
     const pipeline: any[] = [
@@ -295,6 +315,44 @@ export const getActivities = async (
               $unwind: {
                 path: "$contact",
                 preserveNullAndEmptyArrays: true,
+              },
+            },
+            {
+              $lookup: {
+                from: "products",
+                localField: "product",
+                foreignField: "_id",
+                as: "product",
+              },
+            },
+            {
+              $unwind: {
+                path: "$product",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+
+            {
+              $lookup: {
+                from: "users",
+                localField: "user",
+                foreignField: "_id",
+                as: "user",
+              },
+            },
+            {
+              $unwind: {
+                path: "$user",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+
+            {
+              $lookup: {
+                from: "users",
+                localField: "secondaryAssignees",
+                foreignField: "_id",
+                as: "secondaryAssignees",
               },
             },
           ],
@@ -428,6 +486,18 @@ export const createActivity = async (
         path: "hospital",
         select: "hospitalName",
       },
+      {
+        path: "product",
+        select: "name",
+      },
+      {
+        path: "user",
+        select: "name email",
+      },
+      {
+        path: "secondaryAssignees",
+        select: "name email",
+      },
     ];
 
     switch (type.toLowerCase()) {
@@ -460,10 +530,59 @@ export const createActivity = async (
         return;
     }
 
+    // ✅ Validate Product Category Deal exists for this Hospital
+    if (!data.hospital) {
+      res.status(400).json({
+        success: false,
+        message: "Hospital ID is required",
+      });
+      return;
+    }
+
+    if (data.product && data.product !== "") {
+      if (!mongoose.Types.ObjectId.isValid(data.product)) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid Product Category ID",
+        });
+        return;
+      }
+      const Product = mongoose.model("Product");
+      const productExists = await Product.findById(data.product);
+      if (!productExists) {
+        res.status(400).json({
+          success: false,
+          message: "Selected Product Category does not exist.",
+        });
+        return;
+      }
+
+      // Check if there is a deal for this hospital and this product
+      const Deal = mongoose.model("Deal");
+      const dealExists = await Deal.findOne({
+        hospital: new mongoose.Types.ObjectId(data.hospital),
+        "products.product": new mongoose.Types.ObjectId(data.product),
+      });
+
+      if (!dealExists) {
+        res.status(400).json({
+          success: false,
+          message: `This hospital does not have a deal created for product "${productExists.name}" yet. Please create a deal (expected ARR) for this product first.`,
+        });
+        return;
+      }
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Product Category is required. If no deals exist, please create a deal for this product category first.",
+      });
+      return;
+    }
+
     // ✅ Activity Data
     const activityData: any = {
       ...data,
-      user: (req as any).user?._id,
+      user: data.user || (req as any).user?._id,
     };
 
     // ✅ Remove empty contact field
@@ -524,6 +643,18 @@ export const updateActivity = async (
         path: "hospital",
         select: "hospitalName",
       },
+      {
+        path: "product",
+        select: "name",
+      },
+      {
+        path: "user",
+        select: "name email",
+      },
+      {
+        path: "secondaryAssignees",
+        select: "name email",
+      },
     ];
 
     switch (type.toLowerCase()) {
@@ -559,6 +690,57 @@ export const updateActivity = async (
 
     if ((req as any).user?.role !== "Admin") {
       query.user = (req as any).user?._id;
+    }
+
+    // ✅ Validate Product Category Deal exists for this Hospital
+    const existingActivity = await (model as any).findById(id);
+    if (!existingActivity) {
+      res.status(404).json({
+        success: false,
+        message: "Activity not found",
+      });
+      return;
+    }
+    const targetHospitalId = data.hospital || existingActivity.hospital;
+
+    if (data.product && data.product !== "") {
+      if (!mongoose.Types.ObjectId.isValid(data.product)) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid Product Category ID",
+        });
+        return;
+      }
+      const Product = mongoose.model("Product");
+      const productExists = await Product.findById(data.product);
+      if (!productExists) {
+        res.status(400).json({
+          success: false,
+          message: "Selected Product Category does not exist.",
+        });
+        return;
+      }
+
+      // Check if there is a deal for this hospital and this product
+      const Deal = mongoose.model("Deal");
+      const dealExists = await Deal.findOne({
+        hospital: new mongoose.Types.ObjectId(targetHospitalId),
+        "products.product": new mongoose.Types.ObjectId(data.product),
+      });
+
+      if (!dealExists) {
+        res.status(400).json({
+          success: false,
+          message: `This hospital does not have a deal created for product "${productExists.name}" yet. Please create a deal (expected ARR) for this product first.`,
+        });
+        return;
+      }
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Product Category is required. If no products exist, please add one under Admin > Products first.",
+      });
+      return;
     }
 
     if (type.toLowerCase() === "note" || type.toLowerCase() === "task") {

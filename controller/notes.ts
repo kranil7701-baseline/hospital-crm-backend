@@ -13,6 +13,7 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
     const search = (req.query.search as string) || "";
     const userId = req.query.userId as string;
     const hospitalId = req.query.hospitalId as string;
+    const productId = req.query.productId as string;
 
     const skip = (page - 1) * limit;
     const matchStage: any = {};
@@ -23,6 +24,10 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
 
     if (hospitalId) {
       matchStage.hospital = new mongoose.Types.ObjectId(hospitalId);
+    }
+
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      matchStage.product = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -53,6 +58,17 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
         },
       },
       { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+
       { $sort: { createdAt: -1 } },
       {
         $facet: {
@@ -89,7 +105,9 @@ export const getNoteById = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const note = await Notes.findById(id).populate("hospital", "hospitalName");
+    const note = await Notes.findById(id)
+      .populate("hospital", "hospitalName")
+      .populate("product", "name");
 
     if (!note) {
       res.status(404).json({ success: false, message: "Note not found" });
@@ -121,7 +139,10 @@ export const createNote = async (
 
     const newNote = new Notes(noteData);
     await newNote.save();
-    await newNote.populate("hospital", "hospitalName");
+    await newNote.populate([
+      { path: "hospital", select: "hospitalName" },
+      { path: "product", select: "name" },
+    ]);
 
     res.status(201).json({ success: true, data: newNote });
   } catch (error: any) {
@@ -142,7 +163,10 @@ export const updateNote = async (
     const updatedNote = await Notes.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
-    }).populate("hospital", "hospitalName");
+    }).populate([
+      { path: "hospital", select: "hospitalName" },
+      { path: "product", select: "name" },
+    ]);
 
     if (!updatedNote) {
       res.status(404).json({ success: false, message: "Note not found" });

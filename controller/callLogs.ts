@@ -14,6 +14,7 @@ export const getCallLogs = async (
     const userId = req.query.userId as string;
     const hospitalId = req.query.hospitalId as string;
     const contactId = req.query.contactId as string;
+    const productId = req.query.productId as string;
 
     const skip = (page - 1) * limit;
     const matchStage: any = {};
@@ -28,6 +29,10 @@ export const getCallLogs = async (
 
     if (contactId) {
       matchStage.contact = new mongoose.Types.ObjectId(contactId);
+    }
+
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      matchStage.product = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -67,6 +72,17 @@ export const getCallLogs = async (
         },
       },
       { $unwind: { path: "$contact", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+
       { $sort: { Date: -1 } },
       {
         $facet: {
@@ -105,7 +121,8 @@ export const getCallLogById = async (
     const { id } = req.params;
     const callLog = await CallLogs.findById(id)
       .populate("hospital", "hospitalName")
-      .populate("contact");
+      .populate("contact")
+      .populate("product", "name");
 
     if (!callLog) {
       res.status(404).json({ success: false, message: "Call log not found" });
@@ -139,6 +156,7 @@ export const createCallLog = async (
     await newCallLog.populate([
       { path: "hospital", select: "hospitalName" },
       { path: "contact", select: "firstName" },
+      { path: "product", select: "name" },
     ]);
 
     res.status(201).json({ success: true, data: newCallLog });
@@ -165,6 +183,7 @@ export const updateCallLog = async (
     }).populate([
       { path: "hospital", select: "hospitalName" },
       { path: "contact", select: "firstName" },
+      { path: "product", select: "name" },
     ]);
 
     if (!updatedCallLog) {

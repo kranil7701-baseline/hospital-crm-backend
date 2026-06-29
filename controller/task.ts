@@ -39,15 +39,17 @@ export const getDashboardTasks = async (
 
     if (!isAdminOrExecutive && userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
+      const orConditions: any[] = [
+        { user: userObjectId },
+        { secondaryAssignees: userObjectId }
+      ];
       if (mentionRegexPattern) {
-        matchStage.$or = [
-          { user: userObjectId },
+        orConditions.push(
           { title: { $regex: mentionRegexPattern, $options: "i" } },
-          { description: { $regex: mentionRegexPattern, $options: "i" } },
-        ];
-      } else {
-        matchStage.user = userObjectId;
+          { description: { $regex: mentionRegexPattern, $options: "i" } }
+        );
       }
+      matchStage.$or = orConditions;
     }
 
     const sevenDaysAgo = new Date();
@@ -123,6 +125,35 @@ export const getDashboardTasks = async (
         },
       },
 
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "secondaryAssignees",
+          foreignField: "_id",
+          as: "secondaryAssignees",
+        },
+      },
+
       { $sort: { createdAt: -1 } },
 
       {
@@ -163,6 +194,7 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     const search = (req.query.search as string) || "";
     const userId = req.query.userId as string;
     const hospitalId = req.query.hospitalId as string;
+    const productId = req.query.productId as string;
 
     const skip = (page - 1) * limit;
     const matchStage: any = {};
@@ -178,19 +210,25 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
 
     if (userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
+      const orConditions: any[] = [
+        { user: userObjectId },
+        { secondaryAssignees: userObjectId }
+      ];
       if (mentionRegexPattern) {
-        matchStage.$or = [
-          { user: userObjectId },
+        orConditions.push(
           { title: { $regex: mentionRegexPattern, $options: "i" } },
-          { description: { $regex: mentionRegexPattern, $options: "i" } },
-        ];
-      } else {
-        matchStage.user = userObjectId;
+          { description: { $regex: mentionRegexPattern, $options: "i" } }
+        );
       }
+      matchStage.$or = orConditions;
     }
 
     if (hospitalId) {
       matchStage.hospital = new mongoose.Types.ObjectId(hospitalId);
+    }
+
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      matchStage.product = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -241,6 +279,35 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
 
       { $unwind: { path: "$hospital", preserveNullAndEmptyArrays: true } },
 
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "secondaryAssignees",
+          foreignField: "_id",
+          as: "secondaryAssignees",
+        },
+      },
+
       { $sort: { dueDate: 1 } },
 
       {
@@ -278,7 +345,11 @@ export const getTaskById = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const task = await Task.findById(id).populate("hospital", "hospitalName");
+    const task = await Task.findById(id)
+      .populate("hospital", "hospitalName")
+      .populate("user", "name email")
+      .populate("product", "name")
+      .populate("secondaryAssignees", "name email");
 
     if (!task) {
       res.status(404).json({ success: false, message: "Task not found" });
@@ -302,12 +373,17 @@ export const createTask = async (
   try {
     const taskData = {
       ...req.body,
-      user: req.user?._id,
+      user: req.body.user || req.user?._id,
     };
 
     const newTask = new Task(taskData);
     await newTask.save();
-    await newTask.populate("hospital", "hospitalName");
+    await newTask.populate([
+      { path: "hospital", select: "hospitalName" },
+      { path: "user", select: "name email" },
+      { path: "product", select: "name" },
+      { path: "secondaryAssignees", select: "name email" },
+    ]);
 
     const taskText = `${req.body.title || ""} ${req.body.description || ""}`;
     await handleMentions(req, taskText, "task", req.body.hospital);
@@ -328,10 +404,37 @@ export const updateTask = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const existingTask = await Task.findById(id);
+    if (!existingTask) {
+      res.status(404).json({ success: false, message: "Task not found" });
+      return;
+    }
+
+    if (req.user?.role === "Sales") {
+      const isCreator = existingTask.user.toString() === req.user._id.toString();
+      if (!isCreator && req.body.secondaryAssignees) {
+        const existingSecs = (existingTask.secondaryAssignees || []).map(id => id.toString()).sort();
+        const incomingSecs = (req.body.secondaryAssignees || []).map((id: string) => id.toString()).sort();
+        if (JSON.stringify(existingSecs) !== JSON.stringify(incomingSecs)) {
+          res.status(403).json({
+            success: false,
+            message: "Salespeople are not allowed to edit secondary assignees for tasks they did not create."
+          });
+          return;
+        }
+      }
+    }
+
     const updatedTask = await Task.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
-    }).populate("hospital", "hospitalName");
+    }).populate([
+      { path: "hospital", select: "hospitalName" },
+      { path: "user", select: "name email" },
+      { path: "product", select: "name" },
+      { path: "secondaryAssignees", select: "name email" },
+    ]);
 
     if (!updatedTask) {
       res.status(404).json({ success: false, message: "Task not found" });
