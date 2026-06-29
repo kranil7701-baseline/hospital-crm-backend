@@ -86,7 +86,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       const token = generateToken(user.id);
 
       const cookieOptions = getCookieOptions();
- 
+
       res.cookie("token", token, cookieOptions);
 
       res.status(200).json({
@@ -117,17 +117,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
 export const getMe = async (req: any, res: Response): Promise<void> => {
   try {
-    // 1. Get token directly from cookies
-    const token = req.cookies.token;
+    // 1. Get token directly from cookies or Authorization header
+    let token = req.cookies.token;
+
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+      token = req.headers.authorization.split(" ")[1];
+    }
 
     if (!token) {
       console.warn(
-        "getMe called but no token found in cookies. All cookies:",
+        "getMe called but no token found in cookies or Authorization header. All cookies:",
         req.cookies,
       );
       res.status(401).json({
         success: false,
-        message: "Not authorized, no token in cookies",
+        message: "Not authorized, no token found",
       });
       return;
     }
