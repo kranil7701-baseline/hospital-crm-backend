@@ -13,7 +13,7 @@ export const uploadAndCreateDocument = async (
             return;
         }
 
-        const { name, category, hospitalId } = req.body;
+        const { name, category, hospitalId, product } = req.body;
 
         if (!name || !hospitalId) {
             fs.unlinkSync((req as any).file.path);
@@ -26,7 +26,7 @@ export const uploadAndCreateDocument = async (
 
         const fileUrl = `/uploads/${(req as any).file.filename}`;
 
-        const newDocument = await DocumentModel.create({
+        const created = await DocumentModel.create({
             name,
             category: category || "Other",
             fileUrl,
@@ -35,12 +35,17 @@ export const uploadAndCreateDocument = async (
             user: (req as any).user._id,
             fileSize: (req as any).file.size,
             fileType: (req as any).file.mimetype,
+            product: product || undefined,
         });
+
+        const populated = await DocumentModel.findById(created._id)
+            .populate("product", "name")
+            .populate("user", "name email");
 
         res.status(201).json({
             success: true,
             message: "Document uploaded and saved successfully",
-            data: newDocument,
+            data: populated,
         });
     } catch (error: any) {
         if ((req as any).file) {
@@ -70,7 +75,8 @@ export const getHospitalDocuments = async (
 
         const documents = await DocumentModel.find({ hospital: hospitalId })
             .sort({ createdAt: -1 })
-            .populate("user", "name email");
+            .populate("user", "name email")
+            .populate("product", "name");
 
         res.status(200).json({
             success: true,

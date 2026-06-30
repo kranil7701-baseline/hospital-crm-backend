@@ -91,8 +91,12 @@ const connectDB = async () => {
       console.log("✅ MongoDB Connected");
       try {
         if (m.connection.db) {
-          await m.connection.db.collection("contacts").dropIndex("phoneNumber_1");
-          console.log("✅ Successfully dropped unique phoneNumber_1 index from Contact collection");
+          await m.connection.db
+            .collection("contacts")
+            .dropIndex("phoneNumber_1");
+          console.log(
+            "✅ Successfully dropped unique phoneNumber_1 index from Contact collection",
+          );
         }
       } catch (err: any) {
         if (err.code !== 27 && err.codeName !== "IndexNotFound") {
@@ -102,7 +106,9 @@ const connectDB = async () => {
       try {
         if (m.connection.db) {
           await m.connection.db.collection("contacts").dropIndex("email_1");
-          console.log("✅ Successfully dropped unique email_1 index from Contact collection");
+          console.log(
+            "✅ Successfully dropped unique email_1 index from Contact collection",
+          );
         }
       } catch (err: any) {
         if (err.code !== 27 && err.codeName !== "IndexNotFound") {

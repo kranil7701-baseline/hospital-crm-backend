@@ -15,6 +15,7 @@ export interface IDocument extends Document {
     filename: string;
     hospital: mongoose.Types.ObjectId;
     user: mongoose.Types.ObjectId;
+    product?: mongoose.Types.ObjectId;
     fileSize: number;
     fileType: string;
     createdAt: Date;
@@ -58,12 +59,16 @@ const DocumentSchema: Schema = new Schema(
         fileType: {
             type: String,
         },
+        product: {
+            type: Schema.Types.ObjectId,
+            ref: "Product",
+        },
     },
     {
         timestamps: true,
     },
 );
 
-DocumentSchema.index({ hospital: 1, category: 1 });
+DocumentSchema.index({ hospital: 1, product: 1 });
 
 export default mongoose.model<IDocument>("Document", DocumentSchema);
