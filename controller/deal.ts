@@ -447,6 +447,14 @@ export const createDeal = async (
 
     const createdDeals = await Deal.insertMany(dealsToInsert);
 
+    // Assign the hospital to the deal creator
+    const dealUser = rest.userId || req.body.userId || req.body.user || req.user?._id;
+    if (dealUser) {
+      await Hospital.findByIdAndUpdate(hospitalId, {
+        user: dealUser,
+      });
+    }
+
     res.status(201).json({
       success: true,
       count: createdDeals.length,
@@ -659,6 +667,14 @@ export const addProductToDeal = async (
     });
 
     await newDeal.save();
+
+    // Assign the hospital to the deal creator
+    const dealUser = (req as any).user?._id;
+    if (dealUser) {
+      await Hospital.findByIdAndUpdate(hospitalId, {
+        user: dealUser,
+      });
+    }
 
     res.status(201).json({
       success: true,
