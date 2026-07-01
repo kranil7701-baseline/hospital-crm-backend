@@ -494,15 +494,14 @@ export const createActivity = async (
         path: "user",
         select: "name email",
       },
-      {
-        path: "secondaryAssignees",
-        select: "name email",
-      },
     ];
 
     switch (type.toLowerCase()) {
       case "task":
         model = Task;
+        populateOptions.push(
+          { path: "secondaryAssignees", select: "name email" },
+        );
         break;
 
       case "note":
@@ -637,15 +636,14 @@ export const updateActivity = async (
         path: "user",
         select: "name email",
       },
-      {
-        path: "secondaryAssignees",
-        select: "name email",
-      },
     ];
 
     switch (type.toLowerCase()) {
       case "task":
         model = Task;
+        populateOptions.push(
+          { path: "secondaryAssignees", select: "name email" },
+        );
         break;
 
       case "note":
