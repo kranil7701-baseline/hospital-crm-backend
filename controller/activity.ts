@@ -720,7 +720,11 @@ export const updateActivity = async (
       await handleMentions(req, textToSearch, type, data.hospital);
     }
 
-    const updatedActivity = await (model as any).findOneAndUpdate(query, data, {
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([, v]) => v !== undefined && v !== ""),
+    );
+
+    const updatedActivity = await (model as any).findOneAndUpdate(query, cleanData, {
       new: true,
       runValidators: true,
     }).populate(populateOptions);
