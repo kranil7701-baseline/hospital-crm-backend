@@ -221,9 +221,7 @@ export const createHospital = async (
   try {
     const { userId, user, ...restBody } = req.body;
     const hospitalData = Object.fromEntries(
-      Object.entries(restBody).filter(
-        ([, v]) => v !== undefined && v !== null && v !== "",
-      ),
+      Object.entries(restBody).filter(([, v]) => v !== undefined && v !== ""),
     );
 
     const hospital = new Hospital(hospitalData);
@@ -320,7 +318,9 @@ export const updateHospital = async (
       return;
     }
 
-    const updateData = { ...req.body };
+    const updateData = Object.fromEntries(
+      Object.entries(req.body).filter(([, v]) => v !== undefined && v !== ""),
+    );
 
     // Restrict Sales role from editing certain fields
     if (req.user?.role === UserRole.SALES) {
@@ -333,7 +333,7 @@ export const updateHospital = async (
     // Check if the 'user' field is being changed
     if (
       updateData.user &&
-      updateData.user.toString() !== hospital.user.toString()
+      (!hospital.user || updateData.user.toString() !== hospital.user.toString())
     ) {
       // if (req.user?.role !== UserRole.ADMIN) {
       //   res.status(403).json({
