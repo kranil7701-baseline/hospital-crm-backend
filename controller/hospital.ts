@@ -219,10 +219,12 @@ export const createHospital = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const hospitalData = {
-      ...req.body,
-      user: req.body.userId || req.body.user || req.user?._id,
-    };
+    const { userId, user, ...restBody } = req.body;
+    const hospitalData = Object.fromEntries(
+      Object.entries(restBody).filter(
+        ([, v]) => v !== undefined && v !== null && v !== "",
+      ),
+    );
 
     const hospital = new Hospital(hospitalData);
     await hospital.save();
