@@ -4,11 +4,7 @@ import Deal from "../model/deal.ts";
 import mongoose from "mongoose";
 import Product from "../model/Product.ts";
 import Hospital from "../model/Hospital.ts";
-import Task from "../model/Task.ts";
-import Notes from "../model/Notes.ts";
-import CallLog from "../model/CallLogs.ts";
 import { UserRole } from "../model/User.ts";
-import Contact from "../model/Contact.ts";
 
 export const getDeals = async (
   req: AuthRequest,
@@ -795,6 +791,13 @@ export const updateDeal = async (
       }
 
       updateFields.user = userId;
+
+      // 🔥 Update the associated hospital's assigned user too
+      if (deal.hospital) {
+        await Hospital.findByIdAndUpdate(deal.hospital, {
+          user: userId === "" || userId === null ? null : userId,
+        });
+      }
     }
 
     const updatedDeal = await Deal.findByIdAndUpdate(

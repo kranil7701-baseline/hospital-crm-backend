@@ -369,6 +369,14 @@ export const updateHospital = async (
       return;
     }
 
+    // 🔥 Reassign all associated deals to the new user if user was changed
+    if (updateData.user !== undefined) {
+      await Deal.updateMany(
+        { hospital: id },
+        { user: updateData.user }
+      );
+    }
+
     // 🔥 2. Fetch deals for this hospital
     const deals = await Deal.find({ hospital: id })
       .select("_id products")
