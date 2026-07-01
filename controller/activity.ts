@@ -557,20 +557,6 @@ export const createActivity = async (
         return;
       }
 
-      // Check if there is a deal for this hospital and this product
-      const Deal = mongoose.model("Deal");
-      const dealExists = await Deal.findOne({
-        hospital: new mongoose.Types.ObjectId(data.hospital),
-        "products.product": new mongoose.Types.ObjectId(data.product),
-      });
-
-      if (!dealExists) {
-        res.status(400).json({
-          success: false,
-          message: `This hospital does not have a deal created for product "${productExists.name}" yet. Please create a deal (expected ARR) for this product first.`,
-        });
-        return;
-      }
     } else {
       res.status(400).json({
         success: false,
@@ -721,20 +707,6 @@ export const updateActivity = async (
         return;
       }
 
-      // Check if there is a deal for this hospital and this product
-      const Deal = mongoose.model("Deal");
-      const dealExists = await Deal.findOne({
-        hospital: new mongoose.Types.ObjectId(targetHospitalId),
-        "products.product": new mongoose.Types.ObjectId(data.product),
-      });
-
-      if (!dealExists) {
-        res.status(400).json({
-          success: false,
-          message: `This hospital does not have a deal created for product "${productExists.name}" yet. Please create a deal (expected ARR) for this product first.`,
-        });
-        return;
-      }
     } else {
       res.status(400).json({
         success: false,
