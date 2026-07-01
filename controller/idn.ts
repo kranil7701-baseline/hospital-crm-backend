@@ -56,14 +56,19 @@ export const getIDNHospitalDealsbyID = async (
 
     const hospitalId = req.query.hospitalId as string | undefined;
     const productId = req.query.productId as string | undefined;
+    const reqUserId = req.query.userId as string | undefined;
 
     const hospitalMatch: any = { idn: new mongoose.Types.ObjectId(idnId) };
-    if (!isPrivileged) {
-      if (req.user?._id) {
-        hospitalMatch.user = new mongoose.Types.ObjectId(
-          req.user._id as unknown as string,
-        );
+    if (reqUserId) {
+      try {
+        hospitalMatch.user = new mongoose.Types.ObjectId(reqUserId);
+      } catch (e) {
+        // ignore
       }
+    } else if (!isPrivileged && req.user?._id) {
+      hospitalMatch.user = new mongoose.Types.ObjectId(
+        req.user._id as unknown as string,
+      );
     }
     if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
       hospitalMatch._id = new mongoose.Types.ObjectId(hospitalId);
@@ -138,10 +143,66 @@ export const getIDNHospitalDealsbyID = async (
           state: "$state",
           zip: "$zip",
           deals: 1,
-          totalHospitalARR: 1,
+          totalExpectedARR: "$totalHospitalARR",
         },
       },
-      { $sort: { totalHospitalARR: -1, hospitalName: 1 } },
+      {
+        $addFields: {
+          expectedARRByProduct: {
+            $reduce: {
+              input: "$deals",
+              initialValue: [],
+              in: {
+                $let: {
+                  vars: {
+                    idx: { $indexOfArray: ["$$value.name", "$$this.productName"] },
+                  },
+                  in: {
+                    $cond: {
+                      if: { $ne: ["$$idx", -1] },
+                      then: {
+                        $concatArrays: [
+                          { $slice: ["$$value", "$$idx"] },
+                          [
+                            {
+                              name: "$$this.productName",
+                              amount: {
+                                $add: [
+                                  { $arrayElemAt: ["$$value.amount", "$$idx"] },
+                                  { $ifNull: ["$$this.dealAmount", 0] },
+                                ],
+                              },
+                            },
+                          ],
+                          {
+                            $slice: [
+                              "$$value",
+                              { $add: ["$$idx", 1] },
+                              { $size: "$$value" },
+                            ],
+                          },
+                        ],
+                      },
+                      else: {
+                        $concatArrays: [
+                          "$$value",
+                          [
+                            {
+                              name: "$$this.productName",
+                              amount: { $ifNull: ["$$this.dealAmount", 0] },
+                            },
+                          ],
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      { $sort: { totalExpectedARR: -1, hospitalName: 1 } },
       { $skip: skip },
       { $limit: limit },
     ];
@@ -764,6 +825,11 @@ export const getAllIDNsDeals = async (
         },
       },
 
+      // ⚡️ PAGINATION BEFORE HEAVY LOOKUPS
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+
       // 🔥 STEP 4: Deals lookup (from those hospitals)
       {
         $lookup: {
@@ -778,6 +844,15 @@ export const getAllIDNsDeals = async (
               },
             },
             { $unwind: "$products" },
+            {
+              $lookup: {
+                from: "products",
+                localField: "products.product",
+                foreignField: "_id",
+                as: "product",
+              },
+            },
+            { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
           ],
           as: "deals",
         },
@@ -790,10 +865,42 @@ export const getAllIDNsDeals = async (
             $sum: "$deals.products.dealAmount",
           },
           totalHospitals: { $size: "$hospitals" },
+          idnARRByProduct: {
+            $map: {
+              input: {
+                $setUnion: [
+                  {
+                    $map: {
+                      input: { $ifNull: ["$deals", []] },
+                      as: "d",
+                      in: "$$d.product.name",
+                    },
+                  },
+                ],
+              },
+              as: "productName",
+              in: {
+                name: "$$productName",
+                amount: {
+                  $sum: {
+                    $map: {
+                      input: { $ifNull: ["$deals", []] },
+                      as: "d",
+                      in: {
+                        $cond: [
+                          { $eq: ["$$d.product.name", "$$productName"] },
+                          { $ifNull: ["$$d.products.dealAmount", 0] },
+                          0,
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
-
-      { $sort: { createdAt: -1 } },
 
       {
         $project: {
@@ -801,11 +908,9 @@ export const getAllIDNsDeals = async (
           name: 1,
           idnTotalExpectedARR: 1,
           totalHospitals: 1,
+          idnARRByProduct: 1,
         },
       },
-
-      { $skip: skip },
-      { $limit: limit },
     ];
 
     const idns = await IDN.aggregate(pipeline);
