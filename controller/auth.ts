@@ -165,6 +165,76 @@ export const getMe = async (req: any, res: Response): Promise<void> => {
   }
 };
 
+export const changePassword = async (
+  req: any,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { currentPassword, newPassword, confirmNewPassword } = req.body;
+    const userId = req.user._id;
+
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      res.status(400).json({
+        success: false,
+        message: "Current password, new password, and confirm password are required",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match",
+      });
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      res.status(400).json({
+        success: false,
+        message: "New password must be different from current password",
+      });
+      return;
+    }
+
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      res.status(400).json({ success: false, message: passwordError });
+      return;
+    }
+
+    const user = await User.findById(userId).select("+password");
+    if (!user) {
+      res.status(404).json({ success: false, message: "User not found" });
+      return;
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      res.status(401).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+      return;
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error: any) {
+    console.error("Change password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to change password",
+      error: error.message,
+    });
+  }
+};
+
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
     const { maxAge, ...clearOptions } = getCookieOptions();
