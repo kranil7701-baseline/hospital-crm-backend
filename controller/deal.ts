@@ -693,6 +693,7 @@ export const updateDeal = async (
   try {
     const {
       dealId,
+      product: productId,
       dealAmount,
       quantity,
       stage,
@@ -709,6 +710,14 @@ export const updateDeal = async (
       res.status(400).json({
         success: false,
         message: "dealId is required",
+      });
+      return;
+    }
+
+    if (!productId) {
+      res.status(400).json({
+        success: false,
+        message: "product is required to identify which product in the deal to update",
       });
       return;
     }
@@ -742,29 +751,29 @@ export const updateDeal = async (
 
     const updateFields: any = {};
 
-    // update product fields
+    // update product fields using positional operator $
     if (dealAmount !== undefined) {
-      updateFields["products.0.dealAmount"] = Number(dealAmount);
+      updateFields["products.$.dealAmount"] = Number(dealAmount);
     }
 
     if (quantity !== undefined) {
-      updateFields["products.0.quantity"] = Number(quantity);
+      updateFields["products.$.quantity"] = Number(quantity);
     }
 
     if (beds !== undefined) {
-      updateFields["products.0.beds"] = Number(beds);
+      updateFields["products.$.beds"] = Number(beds);
     }
 
     if (stage) {
-      updateFields["products.0.stage"] = stage;
+      updateFields["products.$.stage"] = stage;
     }
 
     if (expectedCloseDate) {
-      updateFields["products.0.expectedCloseDate"] = expectedCloseDate;
+      updateFields["products.$.expectedCloseDate"] = expectedCloseDate;
     }
 
     if (dealDate) {
-      updateFields["products.0.dealDate"] = dealDate;
+      updateFields["products.$.dealDate"] = dealDate;
     }
 
     // notes
@@ -800,8 +809,11 @@ export const updateDeal = async (
       }
     }
 
-    const updatedDeal = await Deal.findByIdAndUpdate(
-      dealId,
+    const updatedDeal = await Deal.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(dealId),
+        "products.product": new mongoose.Types.ObjectId(productId),
+      },
       {
         $set: updateFields,
       },
@@ -813,6 +825,14 @@ export const updateDeal = async (
       .populate("hospital", "hospitalName")
       .populate("user", "name email")
       .populate("products.product", "name");
+
+    if (!updatedDeal) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found in this deal",
+      });
+      return;
+    }
 
     res.status(200).json({
       success: true,
