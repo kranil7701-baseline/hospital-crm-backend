@@ -7,7 +7,7 @@ export interface ITask extends Document {
     hospital: mongoose.Types.ObjectId;
     user: mongoose.Types.ObjectId;
     reminders: ('email' | 'push')[];
-    product?: mongoose.Types.ObjectId;
+    products?: mongoose.Types.ObjectId[];
     secondaryAssignees?: mongoose.Types.ObjectId[];
     createdAt: Date;
     updatedAt: Date;
@@ -42,10 +42,10 @@ const TaskSchema: Schema = new Schema({
         enum: ['email', 'push'],
         default: []
     },
-    product: {
+    products: [{
         type: Schema.Types.ObjectId,
         ref: 'Product',
-    },
+    }],
     secondaryAssignees: [{
         type: Schema.Types.ObjectId,
         ref: 'User',

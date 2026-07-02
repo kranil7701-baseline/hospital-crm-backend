@@ -136,15 +136,9 @@ export const getDashboardActivity = async (
       {
         $lookup: {
           from: "products",
-          localField: "product",
+          localField: "products",
           foreignField: "_id",
-          as: "product",
-        },
-      },
-      {
-        $unwind: {
-          path: "$product",
-          preserveNullAndEmptyArrays: true,
+          as: "products",
         },
       },
     ];
@@ -199,7 +193,7 @@ export const getActivities = async (
     }
 
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      filter.product = new mongoose.Types.ObjectId(productId);
+      filter.products = new mongoose.Types.ObjectId(productId);
     }
 
     const pipeline: any[] = [
@@ -320,15 +314,9 @@ export const getActivities = async (
             {
               $lookup: {
                 from: "products",
-                localField: "product",
+                localField: "products",
                 foreignField: "_id",
-                as: "product",
-              },
-            },
-            {
-              $unwind: {
-                path: "$product",
-                preserveNullAndEmptyArrays: true,
+                as: "products",
               },
             },
 
@@ -487,7 +475,7 @@ export const createActivity = async (
         select: "hospitalName",
       },
       {
-        path: "product",
+        path: "products",
         select: "name",
       },
       {
@@ -538,28 +526,29 @@ export const createActivity = async (
       return;
     }
 
-    if (data.product && data.product !== "") {
-      if (!mongoose.Types.ObjectId.isValid(data.product)) {
-        res.status(400).json({
-          success: false,
-          message: "Invalid Product Category ID",
-        });
-        return;
-      }
+    if (data.products && Array.isArray(data.products) && data.products.length > 0) {
       const Product = mongoose.model("Product");
-      const productExists = await Product.findById(data.product);
-      if (!productExists) {
-        res.status(400).json({
-          success: false,
-          message: "Selected Product Category does not exist.",
-        });
-        return;
+      for (const pid of data.products) {
+        if (!mongoose.Types.ObjectId.isValid(pid)) {
+          res.status(400).json({
+            success: false,
+            message: "Invalid Product Category ID",
+          });
+          return;
+        }
+        const productExists = await Product.findById(pid);
+        if (!productExists) {
+          res.status(400).json({
+            success: false,
+            message: "Selected Product Category does not exist.",
+          });
+          return;
+        }
       }
-
     } else {
       res.status(400).json({
         success: false,
-        message: "Product Category is required. If no deals exist, please create a deal for this product category first.",
+        message: "At least one Product Category is required.",
       });
       return;
     }
@@ -629,7 +618,7 @@ export const updateActivity = async (
         select: "hospitalName",
       },
       {
-        path: "product",
+        path: "products",
         select: "name",
       },
       {
@@ -687,28 +676,29 @@ export const updateActivity = async (
     }
     const targetHospitalId = data.hospital || existingActivity.hospital;
 
-    if (data.product && data.product !== "") {
-      if (!mongoose.Types.ObjectId.isValid(data.product)) {
-        res.status(400).json({
-          success: false,
-          message: "Invalid Product Category ID",
-        });
-        return;
-      }
+    if (data.products && Array.isArray(data.products) && data.products.length > 0) {
       const Product = mongoose.model("Product");
-      const productExists = await Product.findById(data.product);
-      if (!productExists) {
-        res.status(400).json({
-          success: false,
-          message: "Selected Product Category does not exist.",
-        });
-        return;
+      for (const pid of data.products) {
+        if (!mongoose.Types.ObjectId.isValid(pid)) {
+          res.status(400).json({
+            success: false,
+            message: "Invalid Product Category ID",
+          });
+          return;
+        }
+        const productExists = await Product.findById(pid);
+        if (!productExists) {
+          res.status(400).json({
+            success: false,
+            message: "Selected Product Category does not exist.",
+          });
+          return;
+        }
       }
-
     } else {
       res.status(400).json({
         success: false,
-        message: "Product Category is required. If no products exist, please add one under Admin > Products first.",
+        message: "At least one Product Category is required.",
       });
       return;
     }

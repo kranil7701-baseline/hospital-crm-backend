@@ -32,7 +32,7 @@ export const getCallLogs = async (
     }
 
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      matchStage.product = new mongoose.Types.ObjectId(productId);
+      matchStage.products = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -76,12 +76,11 @@ export const getCallLogs = async (
       {
         $lookup: {
           from: "products",
-          localField: "product",
+          localField: "products",
           foreignField: "_id",
-          as: "product",
+          as: "products",
         },
       },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
 
       { $sort: { Date: -1 } },
       {
@@ -122,7 +121,7 @@ export const getCallLogById = async (
     const callLog = await CallLogs.findById(id)
       .populate("hospital", "hospitalName")
       .populate("contact")
-      .populate("product", "name");
+      .populate("products", "name");
 
     if (!callLog) {
       res.status(404).json({ success: false, message: "Call log not found" });
@@ -156,7 +155,7 @@ export const createCallLog = async (
     await newCallLog.populate([
       { path: "hospital", select: "hospitalName" },
       { path: "contact", select: "firstName" },
-      { path: "product", select: "name" },
+      { path: "products", select: "name" },
     ]);
 
     res.status(201).json({ success: true, data: newCallLog });
@@ -183,7 +182,7 @@ export const updateCallLog = async (
     }).populate([
       { path: "hospital", select: "hospitalName" },
       { path: "contact", select: "firstName" },
-      { path: "product", select: "name" },
+      { path: "products", select: "name" },
     ]);
 
     if (!updatedCallLog) {

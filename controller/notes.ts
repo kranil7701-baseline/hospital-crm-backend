@@ -27,7 +27,7 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      matchStage.product = new mongoose.Types.ObjectId(productId);
+      matchStage.products = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -62,12 +62,11 @@ export const getNotes = async (req: Request, res: Response): Promise<void> => {
       {
         $lookup: {
           from: "products",
-          localField: "product",
+          localField: "products",
           foreignField: "_id",
-          as: "product",
+          as: "products",
         },
       },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
 
       { $sort: { createdAt: -1 } },
       {
@@ -107,7 +106,7 @@ export const getNoteById = async (
     const { id } = req.params;
     const note = await Notes.findById(id)
       .populate("hospital", "hospitalName")
-      .populate("product", "name");
+      .populate("products", "name");
 
     if (!note) {
       res.status(404).json({ success: false, message: "Note not found" });
@@ -141,7 +140,7 @@ export const createNote = async (
     await newNote.save();
     await newNote.populate([
       { path: "hospital", select: "hospitalName" },
-      { path: "product", select: "name" },
+      { path: "products", select: "name" },
     ]);
 
     res.status(201).json({ success: true, data: newNote });
@@ -165,7 +164,7 @@ export const updateNote = async (
       runValidators: true,
     }).populate([
       { path: "hospital", select: "hospitalName" },
-      { path: "product", select: "name" },
+      { path: "products", select: "name" },
     ]);
 
     if (!updatedNote) {

@@ -52,11 +52,13 @@ export const getDashboardTasks = async (
       matchStage.$or = orConditions;
     }
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const now = new Date();
+    const sevenDaysLater = new Date();
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
-    matchStage.createdAt = {
-      $gte: sevenDaysAgo,
+    matchStage.dueDate = {
+      $gte: now,
+      $lte: sevenDaysLater,
     };
 
     if (search) {
@@ -128,13 +130,11 @@ export const getDashboardTasks = async (
       {
         $lookup: {
           from: "products",
-          localField: "product",
+          localField: "products",
           foreignField: "_id",
-          as: "product",
+          as: "products",
         },
       },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
-
       {
         $lookup: {
           from: "users",
@@ -228,7 +228,7 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      matchStage.product = new mongoose.Types.ObjectId(productId);
+      matchStage.products = new mongoose.Types.ObjectId(productId);
     }
 
     if (search) {
@@ -282,13 +282,11 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
       {
         $lookup: {
           from: "products",
-          localField: "product",
+          localField: "products",
           foreignField: "_id",
-          as: "product",
+          as: "products",
         },
       },
-      { $unwind: { path: "$product", preserveNullAndEmptyArrays: true } },
-
       {
         $lookup: {
           from: "users",
@@ -348,7 +346,7 @@ export const getTaskById = async (
     const task = await Task.findById(id)
       .populate("hospital", "hospitalName")
       .populate("user", "name email")
-      .populate("product", "name")
+      .populate("products", "name")
       .populate("secondaryAssignees", "name email");
 
     if (!task) {
@@ -381,7 +379,7 @@ export const createTask = async (
     await newTask.populate([
       { path: "hospital", select: "hospitalName" },
       { path: "user", select: "name email" },
-      { path: "product", select: "name" },
+      { path: "products", select: "name" },
       { path: "secondaryAssignees", select: "name email" },
     ]);
 
@@ -432,7 +430,7 @@ export const updateTask = async (
     }).populate([
       { path: "hospital", select: "hospitalName" },
       { path: "user", select: "name email" },
-      { path: "product", select: "name" },
+      { path: "products", select: "name" },
       { path: "secondaryAssignees", select: "name email" },
     ]);
 
