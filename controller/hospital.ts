@@ -168,7 +168,7 @@ export const getHospitalByHospitalId = async (
 
     // 3. Get deals
     const rawDeals = await Deal.find({ hospital: id })
-      .select("products leadSource leadSourceDetails")
+      .select("products")
       .populate({
         path: "products.product",
         select: "name",
@@ -176,6 +176,8 @@ export const getHospitalByHospitalId = async (
 
     const deals = rawDeals.map((deal: any) => {
       const dealObj = deal.toObject();
+      delete dealObj.leadSource;
+      delete dealObj.leadSourceDetails;
       return dealObj;
     });
 

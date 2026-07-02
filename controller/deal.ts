@@ -217,8 +217,8 @@ export const getDeals = async (
                 },
                 createdAt: 1,
                 updatedAt: 1,
-                leadSource: 1,
-                leadSourceDetails: 1,
+                leadSource: "$products.leadSource",
+                leadSourceDetails: "$products.leadSourceDetails",
                 expectedCloseDate: "$products.expectedCloseDate",
               },
             },
@@ -436,10 +436,17 @@ export const createDeal = async (
       products: [
         {
           ...product,
+          leadSource: product.leadSource || rest.leadSource,
+          leadSourceDetails: product.leadSourceDetails || rest.leadSourceDetails,
           beds: product.beds !== undefined ? Number(product.beds) : (beds ? Number(beds) : 0),
         },
       ],
     }));
+    // Remove leadSource from deal root since it's now per-product
+    dealsToInsert.forEach((d: any) => {
+      delete d.leadSource;
+      delete d.leadSourceDetails;
+    });
 
     const createdDeals = await Deal.insertMany(dealsToInsert);
 
@@ -535,7 +542,7 @@ export const updateDealProductStage = async (
         },
       },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       },
     );
@@ -648,8 +655,6 @@ export const addProductToDeal = async (
       idn,
       gpo,
       user: (req as any).user?._id,
-      leadSource,
-      leadSourceDetails,
       products: [
         {
           product,
@@ -658,6 +663,8 @@ export const addProductToDeal = async (
           stage,
           expectedCloseDate,
           dealDate,
+          leadSource,
+          leadSourceDetails,
         },
       ],
     });
@@ -782,11 +789,11 @@ export const updateDeal = async (
     }
 
     if (leadSource !== undefined) {
-      updateFields.leadSource = leadSource;
+      updateFields["products.$.leadSource"] = leadSource;
     }
 
     if (leadSourceDetails !== undefined) {
-      updateFields.leadSourceDetails = leadSourceDetails;
+      updateFields["products.$.leadSourceDetails"] = leadSourceDetails;
     }
 
     // only admin can change assigned user
@@ -818,7 +825,7 @@ export const updateDeal = async (
         $set: updateFields,
       },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       },
     )

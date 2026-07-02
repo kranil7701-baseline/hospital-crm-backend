@@ -8,6 +8,8 @@ export interface IDealProduct {
   stage?: string;
   expectedCloseDate?: Date;
   dealDate?: Date;
+  leadSource?: string;
+  leadSourceDetails?: string;
 }
 
 export interface IDeal extends Document {
@@ -17,8 +19,6 @@ export interface IDeal extends Document {
   idn: mongoose.Types.ObjectId;
   products: IDealProduct[];
   notes: string;
-  leadSource?: string;
-  leadSourceDetails?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,6 +76,14 @@ const DealSchema: Schema = new Schema(
           type: Date,
           default: Date.now,
         },
+        leadSource: {
+          type: String,
+          trim: true,
+        },
+        leadSourceDetails: {
+          type: String,
+          trim: true,
+        },
       },
     ],
     user: {
@@ -84,14 +92,6 @@ const DealSchema: Schema = new Schema(
       required: true,
     },
     notes: {
-      type: String,
-      trim: true,
-    },
-    leadSource: {
-      type: String,
-      trim: true,
-    },
-    leadSourceDetails: {
       type: String,
       trim: true,
     },
