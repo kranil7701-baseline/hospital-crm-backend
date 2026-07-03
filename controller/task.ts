@@ -235,6 +235,14 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
       matchStage.products = new mongoose.Types.ObjectId(productId);
     }
 
+    const dueOnly = req.query.dueOnly === "true";
+    if (dueOnly) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      matchStage.completed = false;
+      matchStage.dueDate = { $gte: todayStart };
+    }
+
     if (search) {
       if (matchStage.$or) {
         const userOrMentions = matchStage.$or;
@@ -324,12 +332,24 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     const tasks = result[0]?.data || [];
     const total = result[0]?.totalCount[0]?.total || 0;
 
+    // Count upcoming tasks (due in next 7 days, not completed) across all pages
+    const upcomingMatchStage = { ...matchStage };
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const sevenDaysEnd = new Date();
+    sevenDaysEnd.setDate(sevenDaysEnd.getDate() + 7);
+    sevenDaysEnd.setHours(23, 59, 59, 999);
+    upcomingMatchStage.completed = false;
+    upcomingMatchStage.dueDate = { $gte: todayStart, $lte: sevenDaysEnd };
+    const upcomingCount = await Task.countDocuments(upcomingMatchStage);
+
     res.status(200).json({
       success: true,
       page,
       limit,
       totalTasks: total,
       totalPages: Math.ceil(total / limit),
+      upcomingCount,
       data: tasks,
     });
   } catch (error: any) {
