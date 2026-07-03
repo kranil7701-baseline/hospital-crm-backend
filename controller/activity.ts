@@ -3,9 +3,11 @@ import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Task from "../model/Task.ts";
 import Notes from "../model/Notes.ts";
 import CallLogs from "../model/CallLogs.ts";
+import Hospital from "../model/Hospital.ts";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { handleMentions } from "../helper/mentionNotification.ts";
+import { UserRole } from "../model/User.ts";
 
 
 dotenv.config();
@@ -420,24 +422,38 @@ export const deleteActivity = async (
     }
 
     // Admin can delete any activity
-    // Other users can delete only their own
-    const query: any = {
-      _id: new mongoose.Types.ObjectId(id),
-    };
-
-    if ((req as any).user?.role !== "Admin") {
-      query.user = (req as any).user?._id;
-    }
-
-    const activity = await (model as any).findOneAndDelete(query);
+    // Other users can delete only their own or if they are the hospital's assigned user
+    const activity = await (model as any).findById(id);
 
     if (!activity) {
       res.status(404).json({
         success: false,
-        message: "Activity not found or you don't have permission to delete it",
+        message: "Activity not found",
       });
       return;
     }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = activity.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (activity.hospital) {
+        const hospital = await Hospital.findById(activity.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      const isSecondaryAssignee = (activity.secondaryAssignees || []).some(
+        (id: any) => id.toString() === req.user?._id?.toString()
+      );
+      if (!isCreator && !isHospitalUser && !isSecondaryAssignee) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to delete this activity",
+        });
+        return;
+      }
+    }
+
+    await (model as any).findByIdAndDelete(id);
 
     res.status(200).json({
       success: true,
@@ -657,15 +673,7 @@ export const updateActivity = async (
         return;
     }
 
-    const query: any = {
-      _id: new mongoose.Types.ObjectId(id),
-    };
-
-    if ((req as any).user?.role !== "Admin") {
-      query.user = (req as any).user?._id;
-    }
-
-    // ✅ Validate Product Category Deal exists for this Hospital
+    // ✅ Validate activity exists and check permissions
     const existingActivity = await (model as any).findById(id);
     if (!existingActivity) {
       res.status(404).json({
@@ -673,6 +681,26 @@ export const updateActivity = async (
         message: "Activity not found",
       });
       return;
+    }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = existingActivity.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (existingActivity.hospital) {
+        const hospital = await Hospital.findById(existingActivity.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      const isSecondaryAssignee = (existingActivity.secondaryAssignees || []).some(
+        (id: any) => id.toString() === req.user?._id?.toString()
+      );
+      if (!isCreator && !isHospitalUser && !isSecondaryAssignee) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this activity",
+        });
+        return;
+      }
     }
     const targetHospitalId = data.hospital || existingActivity.hospital;
 
@@ -714,7 +742,7 @@ export const updateActivity = async (
       Object.entries(data).filter(([, v]) => v !== undefined && v !== ""),
     );
 
-    const updatedActivity = await (model as any).findOneAndUpdate(query, cleanData, {
+    const updatedActivity = await (model as any).findByIdAndUpdate(id, cleanData, {
       new: true,
       runValidators: true,
     }).populate(populateOptions);

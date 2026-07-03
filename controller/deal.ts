@@ -514,6 +514,9 @@ export const updateDealProductStage = async (
       return;
     }
 
+    // ✅ Find hospital to check its assigned user
+    const hospital = await Hospital.findById(deal.hospital);
+
     // ✅ Permission checks
     const isAdminOrCustomerSuccess =
       loggedInUser?.role === UserRole.ADMIN ||
@@ -521,8 +524,10 @@ export const updateDealProductStage = async (
 
     const isDealOwner = deal.user.toString() === loggedInUser?._id?.toString();
 
-    // ✅ Only admin or deal owner can update
-    if (!isAdminOrCustomerSuccess && !isDealOwner) {
+    const isHospitalUser = hospital && hospital.user?.toString() === loggedInUser?._id?.toString();
+
+    // ✅ Only admin, customer success, deal owner, or hospital's assigned user can update
+    if (!isAdminOrCustomerSuccess && !isDealOwner && !isHospitalUser) {
       res.status(403).json({
         success: false,
         message: "You are not authorized to update this deal stage",
@@ -740,14 +745,22 @@ export const updateDeal = async (
       return;
     }
 
+    // find hospital to check its assigned user
+    const hospital = await Hospital.findById(deal.hospital);
+
     // authorization check
     const isAdminOrCustomerSuccess =
       req.user?.role === UserRole.ADMIN ||
       req.user?.role === UserRole.CUSTOMER_SUCCESS;
 
+    const isDealOwner = deal.user.toString() === req.user?._id.toString();
+
+    const isHospitalUser = hospital && hospital.user?.toString() === req.user?._id.toString();
+
     if (
       !isAdminOrCustomerSuccess &&
-      deal.user.toString() !== req.user?._id.toString()
+      !isDealOwner &&
+      !isHospitalUser
     ) {
       res.status(403).json({
         success: false,

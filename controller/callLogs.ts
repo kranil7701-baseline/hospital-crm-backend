@@ -1,7 +1,9 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import CallLogs from "../model/CallLogs.ts";
+import Hospital from "../model/Hospital.ts";
 import mongoose from "mongoose";
+import { UserRole } from "../model/User.ts";
 
 export const getCallLogs = async (
   req: Request,
@@ -171,11 +173,35 @@ export const createCallLog = async (
 };
 
 export const updateCallLog = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const existingCallLog = await CallLogs.findById(id);
+    if (!existingCallLog) {
+      res.status(404).json({ success: false, message: "Call log not found" });
+      return;
+    }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = existingCallLog.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (existingCallLog.hospital) {
+        const hospital = await Hospital.findById(existingCallLog.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      if (!isCreator && !isHospitalUser) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this call log",
+        });
+        return;
+      }
+    }
+
     const updatedCallLog = await CallLogs.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
@@ -203,17 +229,36 @@ export const updateCallLog = async (
 };
 
 export const deleteCallLog = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const callLog = await CallLogs.findByIdAndDelete(id);
 
+    const callLog = await CallLogs.findById(id);
     if (!callLog) {
       res.status(404).json({ success: false, message: "Call log not found" });
       return;
     }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = callLog.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (callLog.hospital) {
+        const hospital = await Hospital.findById(callLog.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      if (!isCreator && !isHospitalUser) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to delete this call log",
+        });
+        return;
+      }
+    }
+
+    await CallLogs.findByIdAndDelete(id);
 
     res
       .status(200)

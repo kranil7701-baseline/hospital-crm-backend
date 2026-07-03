@@ -1,9 +1,11 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Notes from "../model/Notes.ts";
+import Hospital from "../model/Hospital.ts";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { handleMentions } from "../helper/mentionNotification.ts";
+import { UserRole } from "../model/User.ts";
 dotenv.config();
 
 export const getNotes = async (req: Request, res: Response): Promise<void> => {
@@ -159,6 +161,30 @@ export const updateNote = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const existingNote = await Notes.findById(id);
+    if (!existingNote) {
+      res.status(404).json({ success: false, message: "Note not found" });
+      return;
+    }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = existingNote.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (existingNote.hospital) {
+        const hospital = await Hospital.findById(existingNote.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      if (!isCreator && !isHospitalUser) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this note",
+        });
+        return;
+      }
+    }
+
     const updatedNote = await Notes.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
@@ -186,17 +212,36 @@ export const updateNote = async (
 };
 
 export const deleteNote = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const note = await Notes.findByIdAndDelete(id);
 
+    const note = await Notes.findById(id);
     if (!note) {
       res.status(404).json({ success: false, message: "Note not found" });
       return;
     }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = note.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (note.hospital) {
+        const hospital = await Hospital.findById(note.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      if (!isCreator && !isHospitalUser) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to delete this note",
+        });
+        return;
+      }
+    }
+
+    await Notes.findByIdAndDelete(id);
 
     res
       .status(200)

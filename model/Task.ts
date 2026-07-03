@@ -6,6 +6,7 @@ export interface ITask extends Document {
     dueDate: Date;
     hospital: mongoose.Types.ObjectId;
     user: mongoose.Types.ObjectId;
+    completed: boolean;
     reminders: ('email' | 'push')[];
     products?: mongoose.Types.ObjectId[];
     secondaryAssignees?: mongoose.Types.ObjectId[];
@@ -36,6 +37,10 @@ const TaskSchema: Schema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'User',
         required: true
+    },
+    completed: {
+        type: Boolean,
+        default: false,
     },
     reminders: {
         type: [String],

@@ -1,8 +1,10 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Task from "../model/Task.ts";
-import User from "../model/User.ts";
+import Hospital from "../model/Hospital.ts";
+import User, { UserRole } from "../model/User.ts";
 import mongoose from "mongoose";
+import dotenv from "dotenv";
 import { handleMentions } from "../helper/mentionNotification.ts";
 
 export const getDashboardTasks = async (
@@ -53,8 +55,10 @@ export const getDashboardTasks = async (
     }
 
     const now = new Date();
+    now.setHours(0, 0, 0, 0);
     const sevenDaysLater = new Date();
     sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    sevenDaysLater.setHours(23, 59, 59, 999);
 
     matchStage.dueDate = {
       $gte: now,
@@ -409,7 +413,27 @@ export const updateTask = async (
       return;
     }
 
-    if (req.user?.role === "Sales") {
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = existingTask.user.toString() === req.user?._id.toString();
+      let isHospitalUser = false;
+      if (existingTask.hospital) {
+        const hospital = await Hospital.findById(existingTask.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id.toString();
+      }
+      const isSecondaryAssignee = (existingTask.secondaryAssignees || []).some(
+        (id: any) => id.toString() === req.user?._id.toString()
+      );
+      if (!isCreator && !isHospitalUser && !isSecondaryAssignee) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this task",
+        });
+        return;
+      }
+    }
+
+    if (req.user?.role === UserRole.SALES) {
       const isCreator = existingTask.user.toString() === req.user._id.toString();
       if (!isCreator && req.body.secondaryAssignees) {
         const existingSecs = (existingTask.secondaryAssignees || []).map(id => id.toString()).sort();
@@ -452,18 +476,97 @@ export const updateTask = async (
   }
 };
 
-export const deleteTask = async (
-  req: Request,
+export const toggleTaskStatus = async (
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const task = await Task.findByIdAndDelete(id);
 
+    const task = await Task.findById(id);
     if (!task) {
       res.status(404).json({ success: false, message: "Task not found" });
       return;
     }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = task.user.toString() === req.user?._id.toString();
+      let isHospitalUser = false;
+      if (task.hospital) {
+        const hospital = await Hospital.findById(task.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id.toString();
+      }
+      const isSecondaryAssignee = (task.secondaryAssignees || []).some(
+        (id: any) => id.toString() === req.user?._id.toString()
+      );
+      if (!isCreator && !isHospitalUser && !isSecondaryAssignee) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to toggle this task",
+        });
+        return;
+      }
+    }
+
+    task.completed = !task.completed;
+    await task.save();
+
+    await task.populate([
+      { path: "hospital", select: "hospitalName" },
+      { path: "user", select: "name email" },
+      { path: "products", select: "name" },
+      { path: "secondaryAssignees", select: "name email" },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: task,
+      message: task.completed ? "Task marked as complete" : "Task marked as incomplete",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to toggle task status",
+      error: error.message,
+    });
+  }
+};
+
+export const deleteTask = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const task = await Task.findById(id);
+    if (!task) {
+      res.status(404).json({ success: false, message: "Task not found" });
+      return;
+    }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = task.user.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (task.hospital) {
+        const hospital = await Hospital.findById(task.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      const isSecondaryAssignee = (task.secondaryAssignees || []).some(
+        (id: any) => id.toString() === req.user?._id?.toString()
+      );
+      if (!isCreator && !isHospitalUser && !isSecondaryAssignee) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to delete this task",
+        });
+        return;
+      }
+    }
+
+    await Task.findByIdAndDelete(id);
 
     res
       .status(200)

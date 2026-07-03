@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Contact from "../model/Contact.ts";
+import Hospital from "../model/Hospital.ts";
 import mongoose from "mongoose";
 import { UserRole } from "../model/User.ts";
 
@@ -252,7 +253,7 @@ export const createContact = async (
 };
 
 export const deleteContact = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -262,12 +263,30 @@ export const deleteContact = async (
       return;
     }
 
-    const contact = await Contact.findByIdAndDelete(id);
-
+    const contact = await Contact.findById(id);
     if (!contact) {
       res.status(404).json({ success: false, message: "Contact not found" });
       return;
     }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = contact.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (contact.hospital) {
+        const hospital = await Hospital.findById(contact.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      if (!isCreator && !isHospitalUser) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to delete this contact",
+        });
+        return;
+      }
+    }
+
+    await Contact.findByIdAndDelete(id);
 
     res
       .status(200)
@@ -282,7 +301,7 @@ export const deleteContact = async (
 };
 
 export const updateContact = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -290,6 +309,29 @@ export const updateContact = async (
     if (typeof id !== "string") {
       res.status(400).json({ success: false, message: "Invalid ID" });
       return;
+    }
+
+    const existingContact = await Contact.findById(id);
+    if (!existingContact) {
+      res.status(404).json({ success: false, message: "Contact not found" });
+      return;
+    }
+
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.CUSTOMER_SUCCESS;
+    if (!isPrivileged) {
+      const isCreator = existingContact.user?.toString() === req.user?._id?.toString();
+      let isHospitalUser = false;
+      if (existingContact.hospital) {
+        const hospital = await Hospital.findById(existingContact.hospital);
+        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+      }
+      if (!isCreator && !isHospitalUser) {
+        res.status(403).json({
+          success: false,
+          message: "You don't have permission to update this contact",
+        });
+        return;
+      }
     }
 
     const updatedContact = await Contact.findByIdAndUpdate(id, req.body, {
@@ -309,11 +351,6 @@ export const updateContact = async (
         },
       ],
     }).populate("product", "name");
-
-    if (!updatedContact) {
-      res.status(404).json({ success: false, message: "Contact not found" });
-      return;
-    }
 
     res.status(200).json({
       success: true,
