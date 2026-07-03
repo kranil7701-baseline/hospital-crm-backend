@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 
 export enum UserRole {
   SALES = "Sales",
+  CLINICAL_SPECIALIST = "Clinical Specialist",
   CUSTOMER_SUCCESS = "Customer Success",
   EXECUTIVE = "Executive",
   ADMIN = "Admin",

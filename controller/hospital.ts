@@ -326,8 +326,8 @@ export const updateHospital = async (
       Object.entries(req.body).filter(([, v]) => v !== undefined && v !== ""),
     );
 
-    // Restrict Sales role from editing certain fields
-    if (req.user?.role === UserRole.SALES) {
+    // Restrict Sales & Clinical Specialist roles from editing certain fields
+    if (req.user?.role === UserRole.SALES || req.user?.role === UserRole.CLINICAL_SPECIALIST) {
       // Remove restricted fields if present
       delete updateData.hospitalName;
       delete updateData.idn;

@@ -453,7 +453,7 @@ export const updateTask = async (
       }
     }
 
-    if (req.user?.role === UserRole.SALES) {
+    if (req.user?.role === UserRole.SALES || req.user?.role === UserRole.CLINICAL_SPECIALIST) {
       const isCreator = existingTask.user.toString() === req.user._id.toString();
       if (!isCreator && req.body.secondaryAssignees) {
         const existingSecs = (existingTask.secondaryAssignees || []).map(id => id.toString()).sort();
@@ -461,7 +461,7 @@ export const updateTask = async (
         if (JSON.stringify(existingSecs) !== JSON.stringify(incomingSecs)) {
           res.status(403).json({
             success: false,
-            message: "Salespeople are not allowed to edit secondary assignees for tasks they did not create."
+            message: "Sales and Clinical Specialist roles are not allowed to edit secondary assignees for tasks they did not create."
           });
           return;
         }
