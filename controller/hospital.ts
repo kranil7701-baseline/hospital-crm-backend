@@ -162,9 +162,11 @@ export const getHospitalByHospitalId = async (
     }
 
     // 2. Get contacts linked to hospital ✅
-    const contacts = await Contact.find({ hospital: id }).select(
-      "firstName lastName phoneNumber designation email isPrimary",
-    );
+    const contacts = await Contact.find({ hospital: id })
+      .select(
+        "firstName lastName phoneNumber designation email isPrimary product",
+      )
+      .populate("product", "name");
 
     // 3. Get deals
     const rawDeals = await Deal.find({ hospital: id })
@@ -364,7 +366,11 @@ export const updateHospital = async (
     })
       .populate("idn", "name")
       .populate("gpo", "name")
-      .populate("contacts", "firstName lastName designation phoneNumber email");
+      .populate({
+        path: "contacts",
+        select: "firstName lastName designation phoneNumber email isPrimary product",
+        populate: { path: "product", select: "name" },
+      });
 
     if (!updatedHospital) {
       res.status(404).json({ success: false, message: "Hospital not found" });

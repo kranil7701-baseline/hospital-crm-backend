@@ -334,7 +334,12 @@ export const updateContact = async (
       }
     }
 
-    const updatedContact = await Contact.findByIdAndUpdate(id, req.body, {
+    const updateData = { ...req.body };
+    if (!updateData.hospital || updateData.hospital === "") {
+      delete updateData.hospital;
+    }
+
+    const updatedContact = await Contact.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     }).populate({
