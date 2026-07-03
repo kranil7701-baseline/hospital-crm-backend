@@ -790,6 +790,123 @@ export const replyToMessage = async (
   }
 };
 
+const THREE_MONTHS_MS = 3 * 30 * 24 * 60 * 60 * 1000;
+
+/** Check if a contact email appears in the message envelope (from, to, cc, bcc) */
+function isContactInEnvelope(msg: any, contactEmail: string): boolean {
+  const lower = contactEmail.toLowerCase();
+  const all: string[] = [
+    msg.from?.emailAddress?.address,
+    ...(msg.toRecipients || []).map((r: any) => r.emailAddress?.address),
+    ...(msg.ccRecipients || []).map((r: any) => r.emailAddress?.address),
+    ...(msg.bccRecipients || []).map((r: any) => r.emailAddress?.address),
+  ];
+  return all.some((a) => a && a.toLowerCase() === lower);
+}
+
+/** Search one user's mailbox for a contact email, return envelope matches within date range */
+async function searchUserMailboxForContact(
+  accessToken: string,
+  userEmail: string,
+  contactEmail: string,
+  threeMonthsAgo: Date,
+  select: string,
+  crmUserId: mongoose.Types.ObjectId,
+  hospitalId: mongoose.Types.ObjectId,
+): Promise<any[]> {
+  const results: any[] = [];
+  const seenIds = new Set<string>();
+  const kql = `"${contactEmail}"`;
+  let url: string | null = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$search=${encodeURIComponent(kql)}&$top=100&$select=${select}`;
+
+  while (url) {
+    const graphResponse = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ConsistencyLevel: "eventual",
+      },
+    });
+
+      const graphData: any = await graphResponse.json();
+      if (!graphResponse.ok) {
+        const errMsg = graphData?.error?.message || "";
+        // Skip invalid users (personal emails not in M365 tenant) rather than failing
+        if (errMsg.includes("is invalid") || errMsg.includes("does not exist") || errMsg.includes("not found")) {
+          console.warn(`Skipping ${userEmail} — not a valid Microsoft 365 user`);
+        } else {
+          console.warn(
+            `Graph API error searching ${userEmail} for ${contactEmail}:`,
+            errMsg,
+          );
+        }
+        break;
+      }
+
+    const messages = graphData.value || [];
+    if (messages.length === 0) break;
+
+    const allOlder = messages.every((msg: any) => {
+      const d = new Date(msg.receivedDateTime || msg.sentDateTime);
+      return d < threeMonthsAgo;
+    });
+    if (allOlder) break;
+
+    for (const msg of messages) {
+      const msgDate = new Date(msg.receivedDateTime || msg.sentDateTime);
+      if (msgDate < threeMonthsAgo) continue;
+      if (seenIds.has(msg.id)) continue;
+      if (!isContactInEnvelope(msg, contactEmail)) continue;
+      seenIds.add(msg.id);
+
+      await processMessageAttachments(accessToken, userEmail, msg);
+
+      results.push({
+        updateOne: {
+          filter: {
+            graphId: msg.id,
+            hospital: hospitalId,
+            crmUser: crmUserId,
+          },
+          update: {
+            $set: {
+              graphId: msg.id,
+              sender: msg.sender?.emailAddress,
+              from: msg.from?.emailAddress,
+              toRecipients:
+                msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+              ccRecipients:
+                msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+              bccRecipients:
+                msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+              subject: msg.subject,
+              bodyPreview: msg.bodyPreview,
+              receivedDateTime: msg.receivedDateTime,
+              sentDateTime: msg.sentDateTime,
+              hasAttachments: msg.hasAttachments,
+              isRead: msg.isRead,
+              isDraft: msg.isDraft,
+              webLink: msg.webLink,
+              conversationId: msg.conversationId,
+              importance: msg.importance,
+              attachments: msg.attachments,
+              hospital: hospitalId,
+              crmUser: crmUserId,
+              normalizedSubject: normalizeSubject(msg.subject || ""),
+              "body.content": msg.body?.content,
+              "body.contentType": msg.body?.contentType,
+            },
+          },
+          upsert: true,
+        },
+      });
+    }
+
+    url = graphData["@odata.nextLink"] || null;
+  }
+
+  return results;
+}
+
 export const syncHospitalEmails = async (
   req: AuthRequest,
   res: Response,
@@ -805,162 +922,76 @@ export const syncHospitalEmails = async (
       return;
     }
 
-    const contacts = await Contact.find({ hospital: hospitalId }).select(
-      "email",
-    );
-    const contactEmails = contacts.map((c) => c.email).filter((e) => e);
+    // Get all CRM users and hospital contacts
+    const [users, contacts] = await Promise.all([
+      User.find({ email: { $exists: true, $ne: "" } }).select("email _id"),
+      Contact.find({ hospital: hospitalId }).select("email"),
+    ]);
 
-    if (contactEmails.length === 0) {
+    const contactEmails = contacts
+      .map((c) => c.email)
+      .filter(Boolean);
+
+    if (users.length === 0 || contactEmails.length === 0) {
       res.status(200).json({
         success: true,
-        message: "No contacts found for this hospital",
+        message: "No users or contacts found for this hospital",
         totalSynced: 0,
       });
       return;
     }
 
     const accessToken = await getAppOnlyToken();
+    const threeMonthsAgo = new Date(Date.now() - THREE_MONTHS_MS);
+    const hospitalObjId = new mongoose.Types.ObjectId(hospitalId);
+    const select =
+      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
 
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-    const formattedDate = threeMonthsAgo.toISOString().split("T")[0];
-
-    const emailTerms = contactEmails
-      .map((email) => `\\"${email}\\"`)
-      .join(" OR ");
-    const searchQuery = `"(${emailTerms}) AND received>=${formattedDate}"`;
-
-    const users = await User.find({});
     let totalSynced = 0;
+    let bulkOps: any[] = [];
 
-    const syncUserEmails = async (dbUser: any): Promise<number> => {
-      const userEmail = dbUser.email;
+    // For each CRM user, search each contact in their mailbox
+    for (const user of users) {
+      const userEmail = user.email;
+      if (!userEmail) continue;
 
-      if (!userEmail) return 0;
+      // Skip users with personal email domains — they won't have M365 mailboxes
+      const domain = userEmail.split("@")[1]?.toLowerCase();
+      if (domain && ["gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "aol.com", "icloud.com", "gmal.com"].includes(domain)) {
+        console.log(`Skipping ${userEmail} — personal email domain`);
+        continue;
+      }
 
-      let userSyncedCount = 0;
-      try {
-        const select =
-          "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
+      for (const contactEmail of contactEmails) {
+        const ops = await searchUserMailboxForContact(
+          accessToken,
+          userEmail,
+          contactEmail,
+          threeMonthsAgo,
+          select,
+          user._id,
+          hospitalObjId,
+        );
 
-        let url = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$search=${encodeURIComponent(
-          searchQuery,
-        )}&$top=50&$select=${select}`;
-
-        let bulkOps: any[] = [];
-        const ATTACHMENT_CONCURRENCY = 5;
-
-        while (url) {
-          const response = await fetch(url, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              ConsistencyLevel: "eventual",
-            },
-          });
-
-          const data = await response.json();
-
-          if (!response.ok) {
-            console.warn(
-              `Graph API error for user ${userEmail}:`,
-              data?.error?.message,
-            );
-            break;
-          }
-
-          const messages = data.value || [];
-          if (messages.length === 0) break;
-
-          userSyncedCount += messages.length;
-
-          for (let i = 0; i < messages.length; i += ATTACHMENT_CONCURRENCY) {
-            const chunk = messages.slice(i, i + ATTACHMENT_CONCURRENCY);
-            await Promise.allSettled(
-              chunk.map((msg: any) =>
-                processMessageAttachments(accessToken, userEmail, msg),
-              ),
-            );
-          }
-
-          for (const msg of messages) {
-            bulkOps.push({
-              updateOne: {
-                filter: {
-                  graphId: msg.id,
-                  hospital: new mongoose.Types.ObjectId(hospitalId),
-                },
-                update: {
-                  $set: {
-                    graphId: msg.id,
-                    sender: msg.sender?.emailAddress,
-                    from: msg.from?.emailAddress,
-                    toRecipients:
-                      msg.toRecipients?.map((r: any) => r.emailAddress) || [],
-                    ccRecipients:
-                      msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-                    bccRecipients:
-                      msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-                    subject: msg.subject,
-                    bodyPreview: msg.bodyPreview,
-                    receivedDateTime: msg.receivedDateTime,
-                    sentDateTime: msg.sentDateTime,
-                    hasAttachments: msg.hasAttachments,
-                    isRead: msg.isRead,
-                    isDraft: msg.isDraft,
-                    webLink: msg.webLink,
-                    conversationId: msg.conversationId,
-                    importance: msg.importance,
-                    attachments: msg.attachments,
-                    hospital: new mongoose.Types.ObjectId(hospitalId),
-                    normalizedSubject: normalizeSubject(msg.subject || ""),
-                    "body.content": msg.body?.content,
-                    "body.contentType": msg.body?.contentType,
-                  },
-                },
-                upsert: true,
-              },
-            });
-          }
-
-          if (bulkOps.length >= 100) {
-            await Email.bulkWrite(bulkOps);
-            bulkOps = [];
-          }
-
-          url = data["@odata.nextLink"] || null;
+        if (ops.length > 0) {
+          totalSynced += ops.length;
+          bulkOps.push(...ops);
         }
 
-        if (bulkOps.length > 0) {
+        if (bulkOps.length >= 100) {
           await Email.bulkWrite(bulkOps);
+          bulkOps = [];
         }
-      } catch (userError: any) {
-        console.error(`Error syncing emails for user ${userEmail}:`, userError);
       }
-      return userSyncedCount;
-    };
+    }
 
-    const CONCURRENCY_LIMIT = 5;
-    let index = 0;
-
-    const worker = async (): Promise<void> => {
-      while (index < users.length) {
-        const currentUserIndex = index++;
-        if (currentUserIndex >= users.length) break;
-        const dbUser = users[currentUserIndex];
-        const count = await syncUserEmails(dbUser);
-        totalSynced += count;
-      }
-    };
-
-    const workers = Array.from(
-      { length: Math.min(CONCURRENCY_LIMIT, users.length) },
-      worker,
-    );
-    await Promise.all(workers);
+    if (bulkOps.length > 0) {
+      await Email.bulkWrite(bulkOps);
+    }
 
     res.status(200).json({
       success: true,
-      message: `Synced ${totalSynced} emails related to hospital contacts`,
+      message: `Synced ${totalSynced} emails related to hospital contacts across ${users.length} users`,
       totalSynced,
     });
   } catch (error: any) {
