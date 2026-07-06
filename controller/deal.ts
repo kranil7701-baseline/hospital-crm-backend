@@ -580,7 +580,7 @@ export const updateDealProductStage = async (
 };
 
 export const removeDeal = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> => {
   try {
@@ -594,9 +594,9 @@ export const removeDeal = async (
       return;
     }
 
-    const deletedDeal = await Deal.findByIdAndDelete(dealId);
+    const deal = await Deal.findById(dealId);
 
-    if (!deletedDeal) {
+    if (!deal) {
       res.status(404).json({
         success: false,
         message: "Deal not found",
@@ -604,10 +604,35 @@ export const removeDeal = async (
       return;
     }
 
+    const hospital = await Hospital.findById(deal.hospital);
+
+    const isAdminOrCustomerSuccess =
+      req.user?.role === UserRole.ADMIN ||
+      req.user?.role === UserRole.CUSTOMER_SUCCESS;
+
+    const isDealOwner = deal.user.toString() === req.user?._id.toString();
+
+    const isPrimaryRep = hospital?.primaryRep?.toString() === req.user?._id.toString();
+    const isSecondaryRep = hospital?.secondaryRep?.toString() === req.user?._id.toString();
+
+    if (
+      !isAdminOrCustomerSuccess &&
+      !isDealOwner &&
+      !isPrimaryRep &&
+      !isSecondaryRep
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You are not authorized to delete this deal",
+      });
+      return;
+    }
+
+    await Deal.findByIdAndDelete(dealId);
+
     res.status(200).json({
       success: true,
       message: "Deal deleted successfully",
-      //  data: deletedDeal
     });
   } catch (error: any) {
     res.status(500).json({
