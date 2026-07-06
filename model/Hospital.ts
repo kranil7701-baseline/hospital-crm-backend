@@ -2,7 +2,8 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface IHospital extends Document {
   idn: mongoose.Types.ObjectId;
-  user: mongoose.Types.ObjectId;
+  primaryRep: mongoose.Types.ObjectId;
+  secondaryRep: mongoose.Types.ObjectId;
   gpo: mongoose.Types.ObjectId;
   hospitalName: string;
   address: string;
@@ -12,11 +13,9 @@ export interface IHospital extends Document {
   competitiveProduct: string;
   teamHospital: boolean;
   magnetHospital: boolean;
-  // products: string[];
   notes: string;
   contacts: mongoose.Types.ObjectId[];
   documents: string[];
-  // bedsWithMac: number;
   ICUBeds: number;
   location: string;
   totalBeds: number;
@@ -41,10 +40,13 @@ const HospitalSchema: Schema = new Schema(
         ref: "Contact",
       },
     ],
-    user: {
+    primaryRep: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      // required: true
+    },
+    secondaryRep: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
     },
     hospitalName: {
       type: String,

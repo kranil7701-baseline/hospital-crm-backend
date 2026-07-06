@@ -59,16 +59,19 @@ export const getIDNHospitalDealsbyID = async (
     const reqUserId = req.query.userId as string | undefined;
 
     const hospitalMatch: any = { idn: new mongoose.Types.ObjectId(idnId) };
-    if (reqUserId) {
+    const userId = reqUserId || (!isPrivileged ? (req.user?._id as unknown as string) : undefined);
+    if (userId) {
       try {
-        hospitalMatch.user = new mongoose.Types.ObjectId(reqUserId);
+        const userDeals = await Deal.find({ user: userId, idn: new mongoose.Types.ObjectId(idnId) }, { hospital: 1 }).lean();
+        const userHospitalIds = [...new Set(userDeals.map((d: any) => d.hospital?.toString()).filter(Boolean))];
+        if (userHospitalIds.length > 0) {
+          hospitalMatch._id = { $in: userHospitalIds.map((id: string) => new mongoose.Types.ObjectId(id)) };
+        } else {
+          hospitalMatch._id = { $in: [] };
+        }
       } catch (e) {
         // ignore
       }
-    } else if (!isPrivileged && req.user?._id) {
-      hospitalMatch.user = new mongoose.Types.ObjectId(
-        req.user._id as unknown as string,
-      );
     }
     if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
       hospitalMatch._id = new mongoose.Types.ObjectId(hospitalId);
@@ -436,6 +439,14 @@ export const getAllIDNsDeals00 = async (
         ? new mongoose.Types.ObjectId(userId)
         : null;
 
+    // Pre-compute hospital IDs where the user has deals (deal-based visibility)
+    let userHospitalIds: mongoose.Types.ObjectId[] = [];
+    if (userObjectId) {
+      const userDeals = await Deal.find({ user: userObjectId }, { hospital: 1 }).lean();
+      userHospitalIds = [...new Set(userDeals.map((d: any) => d.hospital?.toString()).filter(Boolean))]
+        .map((id: string) => new mongoose.Types.ObjectId(id));
+    }
+
     const matchStage: any = {};
     if (search) {
       matchStage.name = { $regex: search, $options: "i" };
@@ -444,7 +455,7 @@ export const getAllIDNsDeals00 = async (
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // 🔥 STEP 1: Hospitals lookup (dynamic based on user)
+      // 🔥 STEP 1: Hospitals lookup (dynamic based on deals)
       {
         $lookup: {
           from: "hospitals",
@@ -456,7 +467,7 @@ export const getAllIDNsDeals00 = async (
                   ? {
                     $and: [
                       { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] },
+                      { $in: ["$_id", userHospitalIds] },
                     ],
                   }
                   : {
@@ -695,7 +706,7 @@ export const getAllIDNsDeals00 = async (
                   ? {
                     $and: [
                       { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] },
+                      { $in: ["$_id", userHospitalIds] },
                     ],
                   }
                   : {
@@ -771,6 +782,14 @@ export const getAllIDNsDeals = async (
       }
     }
 
+    // Pre-compute hospital IDs where the user has deals (for deal-based visibility)
+    let userHospitalIds: mongoose.Types.ObjectId[] = [];
+    if (userObjectId) {
+      const userDeals = await Deal.find({ user: userObjectId }, { hospital: 1 }).lean();
+      userHospitalIds = [...new Set(userDeals.map((d: any) => d.hospital?.toString()).filter(Boolean))]
+        .map((id: string) => new mongoose.Types.ObjectId(id));
+    }
+
     const matchStage: any = {};
     if (search) {
       matchStage.name = { $regex: search, $options: "i" };
@@ -779,7 +798,7 @@ export const getAllIDNsDeals = async (
     const pipeline: any[] = [
       { $match: matchStage },
 
-      // 🔥 STEP 1: Hospitals lookup for count only
+      // 🔥 STEP 1: Hospitals lookup based on deals
       {
         $lookup: {
           from: "hospitals",
@@ -791,7 +810,7 @@ export const getAllIDNsDeals = async (
                   ? {
                     $and: [
                       { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] },
+                      { $in: ["$_id", userHospitalIds] },
                     ],
                   }
                   : {
@@ -929,7 +948,7 @@ export const getAllIDNsDeals = async (
                   ? {
                     $and: [
                       { $eq: ["$idn", "$$idnId"] },
-                      { $eq: ["$user", userObjectId] },
+                      { $in: ["$_id", userHospitalIds] },
                     ],
                   }
                   : {

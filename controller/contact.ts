@@ -275,7 +275,7 @@ export const deleteContact = async (
       let isHospitalUser = false;
       if (contact.hospital) {
         const hospital = await Hospital.findById(contact.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({
@@ -323,7 +323,7 @@ export const updateContact = async (
       let isHospitalUser = false;
       if (existingContact.hospital) {
         const hospital = await Hospital.findById(existingContact.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({

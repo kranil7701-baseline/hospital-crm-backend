@@ -450,12 +450,17 @@ export const createDeal = async (
 
     const createdDeals = await Deal.insertMany(dealsToInsert);
 
-    // Assign the hospital to the deal creator
     const dealUser = rest.userId || req.body.userId || req.body.user || req.user?._id;
     if (dealUser) {
-      await Hospital.findByIdAndUpdate(hospitalId, {
-        user: dealUser,
-      });
+      const hospital = await Hospital.findById(hospitalId);
+      if (hospital) {
+        if (!hospital.primaryRep && !hospital.secondaryRep) {
+          hospital.primaryRep = dealUser;
+        } else if (hospital.primaryRep && !hospital.secondaryRep && hospital.primaryRep.toString() !== dealUser.toString()) {
+          hospital.secondaryRep = dealUser;
+        }
+        await hospital.save();
+      }
     }
 
     res.status(201).json({
@@ -524,10 +529,10 @@ export const updateDealProductStage = async (
 
     const isDealOwner = deal.user.toString() === loggedInUser?._id?.toString();
 
-    const isHospitalUser = hospital && hospital.user?.toString() === loggedInUser?._id?.toString();
+    const isPrimaryRep = hospital?.primaryRep?.toString() === loggedInUser?._id?.toString();
+    const isSecondaryRep = hospital?.secondaryRep?.toString() === loggedInUser?._id?.toString();
 
-    // ✅ Only admin, customer success, deal owner, or hospital's assigned user can update
-    if (!isAdminOrCustomerSuccess && !isDealOwner && !isHospitalUser) {
+    if (!isAdminOrCustomerSuccess && !isDealOwner && !isPrimaryRep && !isSecondaryRep) {
       res.status(403).json({
         success: false,
         message: "You are not authorized to update this deal stage",
@@ -676,12 +681,18 @@ export const addProductToDeal = async (
 
     await newDeal.save();
 
-    // Assign the hospital to the deal creator
+    // Self-assignment: set primaryRep or secondaryRep based on availability
     const dealUser = (req as any).user?._id;
     if (dealUser) {
-      await Hospital.findByIdAndUpdate(hospitalId, {
-        user: dealUser,
-      });
+      const hospital = await Hospital.findById(hospitalId);
+      if (hospital) {
+        if (!hospital.primaryRep && !hospital.secondaryRep) {
+          hospital.primaryRep = dealUser;
+        } else if (hospital.primaryRep && !hospital.secondaryRep && hospital.primaryRep.toString() !== dealUser.toString()) {
+          hospital.secondaryRep = dealUser;
+        }
+        await hospital.save();
+      }
     }
 
     res.status(201).json({
@@ -755,12 +766,14 @@ export const updateDeal = async (
 
     const isDealOwner = deal.user.toString() === req.user?._id.toString();
 
-    const isHospitalUser = hospital && hospital.user?.toString() === req.user?._id.toString();
+    const isPrimaryRep = hospital?.primaryRep?.toString() === req.user?._id.toString();
+    const isSecondaryRep = hospital?.secondaryRep?.toString() === req.user?._id.toString();
 
     if (
       !isAdminOrCustomerSuccess &&
       !isDealOwner &&
-      !isHospitalUser
+      !isPrimaryRep &&
+      !isSecondaryRep
     ) {
       res.status(403).json({
         success: false,
@@ -821,10 +834,10 @@ export const updateDeal = async (
 
       updateFields.user = userId;
 
-      // 🔥 Update the associated hospital's assigned user too
+      // 🔥 Update the hospital's primary rep
       if (deal.hospital) {
         await Hospital.findByIdAndUpdate(deal.hospital, {
-          user: userId === "" || userId === null ? null : userId,
+          primaryRep: userId === "" || userId === null ? null : userId,
         });
       }
     }
@@ -911,7 +924,7 @@ export const getDashboardStats = async (
     const hospitalFilter = isAdminOrCustomerSuccessOrExecutive
       ? {}
       : {
-        $or: [{ user: objectUserId }, { _id: { $in: matchedHospitalIds } }],
+        $or: [{ primaryRep: objectUserId }, { secondaryRep: objectUserId }, { _id: { $in: matchedHospitalIds } }],
       };
 
     // =========================
@@ -1572,7 +1585,7 @@ export const HospitalProductCount = async (
         .map((d: any) => d.hospital?.toString())
         .filter((id: any) => id != null);
       const assignedHospitals = await Hospital.find(
-        { user: objectUserId },
+        { $or: [{ primaryRep: objectUserId }, { secondaryRep: objectUserId }] },
         "_id",
       ).lean();
 

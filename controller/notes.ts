@@ -174,7 +174,7 @@ export const updateNote = async (
       let isHospitalUser = false;
       if (existingNote.hospital) {
         const hospital = await Hospital.findById(existingNote.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({
@@ -230,7 +230,7 @@ export const deleteNote = async (
       let isHospitalUser = false;
       if (note.hospital) {
         const hospital = await Hospital.findById(note.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({

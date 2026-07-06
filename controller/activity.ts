@@ -439,7 +439,7 @@ export const deleteActivity = async (
       let isHospitalUser = false;
       if (activity.hospital) {
         const hospital = await Hospital.findById(activity.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       const isSecondaryAssignee = (activity.secondaryAssignees || []).some(
         (id: any) => id.toString() === req.user?._id?.toString()
@@ -689,7 +689,7 @@ export const updateActivity = async (
       let isHospitalUser = false;
       if (existingActivity.hospital) {
         const hospital = await Hospital.findById(existingActivity.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       const isSecondaryAssignee = (existingActivity.secondaryAssignees || []).some(
         (id: any) => id.toString() === req.user?._id?.toString()

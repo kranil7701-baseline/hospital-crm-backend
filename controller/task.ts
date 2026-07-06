@@ -439,7 +439,7 @@ export const updateTask = async (
       let isHospitalUser = false;
       if (existingTask.hospital) {
         const hospital = await Hospital.findById(existingTask.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id.toString() || hospital?.secondaryRep?.toString() === req.user?._id.toString();
       }
       const isSecondaryAssignee = (existingTask.secondaryAssignees || []).some(
         (id: any) => id.toString() === req.user?._id.toString()
@@ -515,7 +515,7 @@ export const toggleTaskStatus = async (
       let isHospitalUser = false;
       if (task.hospital) {
         const hospital = await Hospital.findById(task.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id.toString() || hospital?.secondaryRep?.toString() === req.user?._id.toString();
       }
       const isSecondaryAssignee = (task.secondaryAssignees || []).some(
         (id: any) => id.toString() === req.user?._id.toString()
@@ -572,7 +572,7 @@ export const deleteTask = async (
       let isHospitalUser = false;
       if (task.hospital) {
         const hospital = await Hospital.findById(task.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       const isSecondaryAssignee = (task.secondaryAssignees || []).some(
         (id: any) => id.toString() === req.user?._id?.toString()

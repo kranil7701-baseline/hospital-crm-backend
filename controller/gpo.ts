@@ -60,16 +60,19 @@ export const getGPOHospitalDealsbyID = async (
     const reqUserId = req.query.userId as string | undefined;
 
     const hospitalMatch: any = { gpo: new mongoose.Types.ObjectId(gpoId) };
-    if (reqUserId) {
+    const userId = reqUserId || (!isPrivileged ? (req.user?._id as unknown as string) : undefined);
+    if (userId) {
       try {
-        hospitalMatch.user = new mongoose.Types.ObjectId(reqUserId);
+        const userDeals = await Deal.find({ user: userId, gpo: new mongoose.Types.ObjectId(gpoId) }, { hospital: 1 }).lean();
+        const userHospitalIds = [...new Set(userDeals.map((d: any) => d.hospital?.toString()).filter(Boolean))];
+        if (userHospitalIds.length > 0) {
+          hospitalMatch._id = { $in: userHospitalIds.map((id: string) => new mongoose.Types.ObjectId(id)) };
+        } else {
+          hospitalMatch._id = { $in: [] };
+        }
       } catch (e) {
         // ignore invalid ObjectId
       }
-    } else if (req.user?._id) {
-      hospitalMatch.user = new mongoose.Types.ObjectId(
-        req.user._id as unknown as string,
-      );
     }
     if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
       hospitalMatch._id = new mongoose.Types.ObjectId(hospitalId);
@@ -463,6 +466,14 @@ export const getAllGPODeals = async (
       );
     }
 
+    // Pre-compute hospital IDs where the user has deals (deal-based visibility)
+    let userHospitalIds: mongoose.Types.ObjectId[] = [];
+    if (userObjectId) {
+      const userDeals = await Deal.find({ user: userObjectId }, { hospital: 1 }).lean();
+      userHospitalIds = [...new Set(userDeals.map((d: any) => d.hospital?.toString()).filter(Boolean))]
+        .map((id: string) => new mongoose.Types.ObjectId(id));
+    }
+
     const matchStage: any = {};
     if (search) {
       matchStage.name = { $regex: search, $options: "i" };
@@ -483,14 +494,14 @@ export const getAllGPODeals = async (
               },
             },
             {
-              $project: { _id: 1, user: 1 },
+              $project: { _id: 1 },
             },
           ],
           as: "hospitals",
         },
       },
 
-      // 🔥 STEP 2: Filter hospitals by user and remove empty GPOs
+      // 🔥 STEP 2: Filter hospitals by user deals and remove empty GPOs
       ...(userObjectId
         ? [
           {
@@ -499,7 +510,7 @@ export const getAllGPODeals = async (
                 $filter: {
                   input: "$hospitals",
                   as: "h",
-                  cond: { $eq: ["$$h.user", userObjectId] },
+                  cond: { $in: ["$$h._id", userHospitalIds] },
                 },
               },
             },
@@ -623,7 +634,7 @@ export const getAllGPODeals = async (
               },
             },
             {
-              $project: { _id: 1, user: 1 },
+              $project: { _id: 1 },
             },
           ],
           as: "hospitals",
@@ -637,7 +648,7 @@ export const getAllGPODeals = async (
                 $filter: {
                   input: "$hospitals",
                   as: "h",
-                  cond: { $eq: ["$$h.user", userObjectId] },
+                  cond: { $in: ["$$h._id", userHospitalIds] },
                 },
               },
             },

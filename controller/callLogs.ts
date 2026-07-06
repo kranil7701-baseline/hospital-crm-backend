@@ -8,7 +8,7 @@ import { UserRole } from "../model/User.ts";
 export const getCallLogs = async (
   req: Request,
   res: Response,
-): Promise<void> => { 
+): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -191,7 +191,7 @@ export const updateCallLog = async (
       let isHospitalUser = false;
       if (existingCallLog.hospital) {
         const hospital = await Hospital.findById(existingCallLog.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({
@@ -247,7 +247,7 @@ export const deleteCallLog = async (
       let isHospitalUser = false;
       if (callLog.hospital) {
         const hospital = await Hospital.findById(callLog.hospital);
-        isHospitalUser = hospital?.user?.toString() === req.user?._id?.toString();
+        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({

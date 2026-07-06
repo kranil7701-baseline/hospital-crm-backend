@@ -151,7 +151,9 @@ export const getHospitalByHospitalId = async (
     // 1. Get hospital
     const hospital = await Hospital.findById(id)
       .populate("idn", "name")
-      .populate("gpo", "name");
+      .populate("gpo", "name")
+      .populate("primaryRep", "name")
+      .populate("secondaryRep", "name");
 
     if (!hospital) {
       res.status(404).json({
@@ -223,9 +225,8 @@ export const createHospital = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { userId, user, ...restBody } = req.body;
     const hospitalData = Object.fromEntries(
-      Object.entries(restBody).filter(([, v]) => v !== undefined && v !== ""),
+      Object.entries(req.body).filter(([, v]) => v !== undefined && v !== ""),
     );
 
     const hospital = new Hospital(hospitalData);
@@ -334,26 +335,19 @@ export const updateHospital = async (
       delete updateData.address;
     }
 
-    // Check if the 'user' field is being changed
+    // Check if the 'primaryRep' field is being changed
     if (
-      updateData.user &&
-      (!hospital.user || updateData.user.toString() !== hospital.user.toString())
+      updateData.primaryRep &&
+      (!hospital.primaryRep || updateData.primaryRep.toString() !== hospital.primaryRep.toString())
     ) {
-      // if (req.user?.role !== UserRole.ADMIN) {
-      //   res.status(403).json({
-      //     success: false,
-      //     message: "Only Admin can change the assigned user of a hospital",
-      //   });
-      //   return;
-      // }
       if (
         req.user?.role !== UserRole.ADMIN &&
-        req.user?.role !== UserRole.CUSTOMER_SUCCESS
+        req.user?.role !== UserRole.EXECUTIVE
       ) {
         res.status(403).json({
           success: false,
           message:
-            "Only Admin or Customer Success can change the assigned user of a hospital",
+            "Only Admin or Executive can change the primary rep of a hospital",
         });
         return;
       }
@@ -377,11 +371,11 @@ export const updateHospital = async (
       return;
     }
 
-    // 🔥 Reassign all associated deals to the new user if user was changed
-    if (updateData.user !== undefined) {
+    // Reassign all associated deals to the new primary rep
+    if (updateData.primaryRep !== undefined) {
       await Deal.updateMany(
         { hospital: id },
-        { user: updateData.user }
+        { user: updateData.primaryRep }
       );
     }
 
@@ -487,7 +481,7 @@ export const getAllHospitalsDeals = async (
     if (filterUserId) {
       pipeline.push({
         $match: {
-          $or: [{ user: filterUserId }, { _id: { $in: matchedHospitalIds } }],
+          $or: [{ primaryRep: filterUserId }, { secondaryRep: filterUserId }, { _id: { $in: matchedHospitalIds } }],
         },
       });
     }
