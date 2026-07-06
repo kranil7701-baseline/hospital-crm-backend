@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface IContact extends Document {
   firstName: string;
-  lastName: string;
+  lastName?: string;
   user: mongoose.Types.ObjectId;
   designation: string;
   hospital: mongoose.Types.ObjectId;
@@ -25,7 +25,6 @@ const ContactSchema: Schema = new Schema(
     },
     lastName: {
       type: String,
-      required: true,
       trim: true,
       index: true,
     },
