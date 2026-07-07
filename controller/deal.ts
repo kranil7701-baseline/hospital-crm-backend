@@ -332,7 +332,6 @@ export const getDeals = async (
     ];
 
     const result = await Deal.aggregate(pipeline);
-    console.log("result : ", result);
 
     const deals = result[0]?.deals || [];
     const totalDealsCount = result[0]?.totalDealsCount[0]?.count || 0;
@@ -1638,7 +1637,7 @@ export const HospitalProductCount = async (
 
     if (isAdminOrCustomerSuccessOrExecutive) {
       const totalHospitals = await Hospital.countDocuments();
-      
+
       const totalDealsRes = await Deal.aggregate([
         { $unwind: "$products" },
         { $count: "count" },
