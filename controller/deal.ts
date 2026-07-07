@@ -288,16 +288,58 @@ export const getDeals = async (
               },
             },
           ],
+
+          implementedBusiness: [
+            {
+              $match: {
+                "products.stage": "Implemented",
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+                amount: { $sum: "$products.dealAmount" },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                count: 1,
+                amount: 1,
+              },
+            },
+          ],
+
+          activeDealsCount: [
+            {
+              $match: {
+                "products.stage": {
+                  $in: [
+                    "Demo",
+                    "CPA",
+                    "Committee",
+                    "Trial",
+                    "Pending Decision",
+                  ],
+                },
+              },
+            },
+            { $count: "count" },
+          ],
         },
       },
     ];
 
     const result = await Deal.aggregate(pipeline);
+    console.log("result : ", result);
 
     const deals = result[0]?.deals || [];
     const totalDealsCount = result[0]?.totalDealsCount[0]?.count || 0;
     const totalHospitals = result[0]?.totalHospitals[0]?.count || 0;
     const closedBusiness = result[0]?.closedBusiness[0]?.amount || 0;
+    const implementedARR = result[0]?.implementedBusiness[0]?.amount || 0;
+    const activeDeals = result[0]?.activeDealsCount[0]?.count || 0;
 
     const productRevenue = await Product.aggregate([
       {
@@ -380,11 +422,13 @@ export const getDeals = async (
     res.status(200).json({
       success: true,
       totalDeals: totalDealsCount,
+      activeDeals,
       page: page || 1,
       limit: limit || totalDealsCount,
       totalPages: limit ? Math.ceil(totalDealsCount / limit) : 1,
       totalHospitals,
       closedBusiness: closedBusiness,
+      implementedARR,
       productRevenue,
       data: deals,
     });
@@ -1588,16 +1632,34 @@ export const HospitalProductCount = async (
 
     let hospitalCount = 0;
     let dealsCount = 0;
+    let activeDealsCount = 0;
 
     const productCount = await Product.countDocuments();
 
     if (isAdminOrCustomerSuccessOrExecutive) {
       const totalHospitals = await Hospital.countDocuments();
+      
+      const totalDealsRes = await Deal.aggregate([
+        { $unwind: "$products" },
+        { $count: "count" },
+      ]);
 
-      const totalDeals = await Deal.countDocuments();
+      // Count active product deals
+      const activeDealsRes = await Deal.aggregate([
+        { $unwind: "$products" },
+        {
+          $match: {
+            "products.stage": {
+              $in: ["Demo", "CPA", "Committee", "Trial", "Pending Decision"],
+            },
+          },
+        },
+        { $count: "count" },
+      ]);
 
       hospitalCount = totalHospitals;
-      dealsCount = totalDeals;
+      dealsCount = totalDealsRes[0]?.count || 0;
+      activeDealsCount = activeDealsRes[0]?.count || 0;
     } else {
       const objectUserId = new mongoose.Types.ObjectId(userId);
 
@@ -1622,8 +1684,29 @@ export const HospitalProductCount = async (
         ...assignedHospitalIds,
       ]);
 
+      const totalDealsRes = await Deal.aggregate([
+        { $match: { user: objectUserId } },
+        { $unwind: "$products" },
+        { $count: "count" },
+      ]);
+
+      // Count active product deals for specific user
+      const activeDealsRes = await Deal.aggregate([
+        { $match: { user: objectUserId } },
+        { $unwind: "$products" },
+        {
+          $match: {
+            "products.stage": {
+              $in: ["Demo", "CPA", "Committee", "Trial", "Pending Decision"],
+            },
+          },
+        },
+        { $count: "count" },
+      ]);
+
       hospitalCount = uniqueHospitalIds.size;
-      dealsCount = userDeals.length;
+      dealsCount = totalDealsRes[0]?.count || 0;
+      activeDealsCount = activeDealsRes[0]?.count || 0;
     }
 
     res.status(200).json({
@@ -1631,6 +1714,7 @@ export const HospitalProductCount = async (
       hospitalCount,
       dealsCount,
       productCount,
+      activeDealsCount,
     });
   } catch (error: any) {
     res.status(500).json({
