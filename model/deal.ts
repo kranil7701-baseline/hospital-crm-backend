@@ -63,7 +63,7 @@ const DealSchema: Schema = new Schema(
             "Committee",
             "Trial",
             "Pending Decision",
-            "Ghosted",
+            // "Ghosted",
             "Closed Lost",
             "Closed Won",
             "Implemented",

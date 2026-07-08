@@ -448,16 +448,8 @@ export const getAllHospitalsDeals = async (
       req.user?.role === UserRole.EXECUTIVE ||
       req.user?.role === UserRole.CUSTOMER_SUCCESS;
 
-    if (isAdminOrExecutiveOrCustomerSuccess) {
-      if (reqUserId && mongoose.Types.ObjectId.isValid(reqUserId)) {
-        filterUserId = new mongoose.Types.ObjectId(reqUserId);
-      }
-    } else {
-      if (req.user?._id) {
-        filterUserId = new mongoose.Types.ObjectId(
-          req.user._id as unknown as string,
-        );
-      }
+    if (reqUserId && mongoose.Types.ObjectId.isValid(reqUserId)) {
+      filterUserId = new mongoose.Types.ObjectId(reqUserId);
     }
 
     let matchedHospitalIds: mongoose.Types.ObjectId[] = [];
