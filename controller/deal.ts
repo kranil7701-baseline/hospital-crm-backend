@@ -379,6 +379,13 @@ export const getDeals = async (
             { $unwind: "$products" },
             {
               $match: {
+                "products.stage": {
+                  $nin: ["Closed Won", "Closed Lost", "Implemented", "No Longer Buying"],
+                },
+              },
+            },
+            {
+              $match: {
                 $expr: {
                   $eq: ["$products.product", "$$productId"],
                 },

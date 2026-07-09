@@ -7,6 +7,10 @@ import mongoose from "mongoose";
 import Deal from "../model/deal.ts";
 import Contact from "../model/Contact.ts";
 import { UserRole } from "../model/User.ts";
+import DocumentModel from "../model/Document.ts";
+import Notes from "../model/Notes.ts";
+import CallLogs from "../model/CallLogs.ts";
+import Task from "../model/Task.ts";
 
 export const getHospitals = async (
   req: Request,
@@ -230,6 +234,18 @@ export const createHospital = async (
       Object.entries(req.body).filter(([, v]) => v !== undefined && v !== ""),
     );
 
+    if (
+      hospitalData.primaryRep &&
+      hospitalData.secondaryRep &&
+      hospitalData.primaryRep.toString() === hospitalData.secondaryRep.toString()
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Primary representative and Secondary representative cannot be the same user",
+      });
+      return;
+    }
+
     const hospital = new Hospital(hospitalData);
     await hospital.save();
 
@@ -289,11 +305,21 @@ export const deleteHospital = async (
       });
     }
 
+    // Cascade delete related records
+    await Promise.all([
+      Deal.deleteMany({ hospital: id }),
+      DocumentModel.deleteMany({ hospital: id }),
+      Contact.deleteMany({ hospital: id }),
+      Notes.deleteMany({ hospital: id }),
+      CallLogs.deleteMany({ hospital: id }),
+      Task.deleteMany({ hospital: id }),
+    ]);
+
     await Hospital.findByIdAndDelete(id);
 
     res.status(200).json({
       success: true,
-      message: "Hospital deleted successfully",
+      message: "Hospital and all related records deleted successfully",
     });
   } catch (error: any) {
     res.status(500).json({
@@ -328,29 +354,96 @@ export const updateHospital = async (
       Object.entries(req.body).filter(([, v]) => v !== undefined && v !== ""),
     );
 
+    const finalPrimaryRep = updateData.primaryRep !== undefined ? updateData.primaryRep : hospital.primaryRep;
+    const finalSecondaryRep = updateData.secondaryRep !== undefined ? updateData.secondaryRep : hospital.secondaryRep;
+
+    if (
+      finalPrimaryRep &&
+      finalSecondaryRep &&
+      finalPrimaryRep.toString() !== "" &&
+      finalSecondaryRep.toString() !== "" &&
+      finalPrimaryRep.toString() !== "null" &&
+      finalSecondaryRep.toString() !== "null" &&
+      finalPrimaryRep.toString() === finalSecondaryRep.toString()
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Primary representative and Secondary representative cannot be the same user",
+      });
+      return;
+    }
+
     // Restrict Sales & Clinical Specialist roles from editing certain fields
     if (req.user?.role === UserRole.SALES || req.user?.role === UserRole.CLINICAL_SPECIALIST) {
       // Remove restricted fields if present
       delete updateData.hospitalName;
       delete updateData.idn;
       delete updateData.address;
-    }
 
-    // Check if the 'primaryRep' field is being changed
-    if (
-      updateData.primaryRep &&
-      (!hospital.primaryRep || updateData.primaryRep.toString() !== hospital.primaryRep.toString())
-    ) {
+      // Primary Rep: Sales can only assign themselves if no primary rep is declared
+      if (updateData.primaryRep) {
+        if (hospital.primaryRep && updateData.primaryRep.toString() === hospital.primaryRep.toString()) {
+          // Same value as existing — no change needed, just strip it
+          delete updateData.primaryRep;
+        } else if (hospital.primaryRep) {
+          // Already has a different primary rep — Sales cannot change it
+          delete updateData.primaryRep;
+          res.status(403).json({
+            success: false,
+            message: "Only Admin or Executive can change the primary rep once declared",
+          });
+          return;
+        } else if (updateData.primaryRep.toString() !== req.user._id.toString()) {
+          // No primary rep, but trying to assign someone else
+          delete updateData.primaryRep;
+          res.status(403).json({
+            success: false,
+            message: "Sales can only assign themselves as primary rep",
+          });
+          return;
+        }
+      }
+
+      // Secondary Rep: Sales can only assign themselves if no secondary rep is declared
+      if (updateData.secondaryRep) {
+        if (hospital.secondaryRep && updateData.secondaryRep.toString() === hospital.secondaryRep.toString()) {
+          // Same value as existing — no change needed, just strip it
+          delete updateData.secondaryRep;
+        } else if (hospital.secondaryRep) {
+          // Already has a different secondary rep — Sales cannot change it
+          delete updateData.secondaryRep;
+          res.status(403).json({
+            success: false,
+            message: "Only Admin or Executive can change the secondary rep once declared",
+          });
+          return;
+        } else if (updateData.secondaryRep.toString() !== req.user._id.toString()) {
+          // No secondary rep, but trying to assign someone else
+          delete updateData.secondaryRep;
+          res.status(403).json({
+            success: false,
+            message: "Sales can only assign themselves as secondary rep",
+          });
+          return;
+        }
+      }
+    } else {
+      // Non-Sales roles: Admin/Executive primaryRep change check (existing logic)
       if (
-        req.user?.role !== UserRole.ADMIN &&
-        req.user?.role !== UserRole.EXECUTIVE
+        updateData.primaryRep &&
+        (!hospital.primaryRep || updateData.primaryRep.toString() !== hospital.primaryRep.toString())
       ) {
-        res.status(403).json({
-          success: false,
-          message:
-            "Only Admin or Executive can change the primary rep of a hospital",
-        });
-        return;
+        if (
+          req.user?.role !== UserRole.ADMIN &&
+          req.user?.role !== UserRole.EXECUTIVE
+        ) {
+          res.status(403).json({
+            success: false,
+            message:
+              "Only Admin or Executive can change the primary rep of a hospital",
+          });
+          return;
+        }
       }
     }
 
