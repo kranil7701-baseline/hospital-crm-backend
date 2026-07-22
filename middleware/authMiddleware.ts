@@ -18,10 +18,10 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     token = req.cookies.token;
   }
 
+  console.log(`[Auth Debug] Path: ${req.originalUrl}, Has Token: ${!!token}, Header: ${req.headers.authorization}`);
+
   if (token) {
     try {
-
-      if (!token) throw new Error('Token not found');
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as jwt.JwtPayload;
 
