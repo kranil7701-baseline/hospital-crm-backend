@@ -27,9 +27,9 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --only=production
 
-# Copy built files and uploads/any necessary folders from builder
+# Copy built files from builder and ensure uploads folder exists
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/uploads ./uploads
+RUN mkdir -p uploads
 
 EXPOSE 8000
 
