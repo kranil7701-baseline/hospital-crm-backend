@@ -41,8 +41,7 @@ initTaskCron();
 const PORT = Number(process.env.PORT) || 8000;
 
 const allowedOrigins = [
-  "https://hospital-crm-frontend.vercel.app",
-  "http://localhost:3000",
+  process.env.FRONTEND_URL,
 ];
 
 app.use(
