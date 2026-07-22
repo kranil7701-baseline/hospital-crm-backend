@@ -3,6 +3,8 @@ import type { AuthRequest } from "../middleware/authMiddleware.ts";
 import Hospital from "../model/Hospital.ts";
 import GPO from "../model/Gpo.ts";
 import IDN from "../model/Idn.ts";
+import fs from "fs";
+import path from "path";
 import mongoose from "mongoose";
 import Deal from "../model/deal.ts";
 import Contact from "../model/Contact.ts";
@@ -303,6 +305,21 @@ export const deleteHospital = async (
       await IDN.findByIdAndUpdate(hospital.idn, {
         $pull: { hospitals: hospital._id },
       });
+    }
+
+    // Fetch and delete physical documents from uploads folder
+    try {
+      const documents = await DocumentModel.find({ hospital: id });
+      for (const doc of documents) {
+        if (doc.filename) {
+          const filePath = path.join("uploads", doc.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error unlinking files for hospital:", err);
     }
 
     // Cascade delete related records

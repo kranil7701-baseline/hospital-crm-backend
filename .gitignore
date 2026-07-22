@@ -5,3 +5,6 @@ tmp/
 *.log
 .vercel/
 certificate-key/
+backup.ts
+restore.ts
+db_backup/
