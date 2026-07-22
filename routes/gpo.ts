@@ -24,16 +24,19 @@ router.get("/deals-by-gpo", getGPOHospitalDealsbyID);
 router.get("/:id", getGPOById);
 router.post(
   "/create",
+  protect,
   authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
   createGPO,
 );
 router.put(
   "/:id",
+  protect,
   authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
   updateGPO,
 );
 router.delete(
   "/:id",
+  protect,
   authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
   deleteGPO,
 );
