@@ -136,7 +136,7 @@ const processMessageAttachments = async (
             try {
               const decodedCid = decodeURIComponent(cleanCid);
               att = attachmentMap.get(decodedCid);
-            } catch (e) {}
+            } catch (e) { }
           }
 
           // Last resort: search for ANY attachment that contains this CID string in its name or ID
@@ -166,7 +166,7 @@ const processMessageAttachments = async (
                   (a: any) =>
                     (a.contentId &&
                       a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                        cleanCid) ||
+                      cleanCid) ||
                     (a.name && a.name.toLowerCase() === cleanCid),
                 ),
             );
@@ -175,7 +175,7 @@ const processMessageAttachments = async (
                 (a: any) =>
                   (a.contentId &&
                     a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                      cleanCid) ||
+                    cleanCid) ||
                   (a.name && a.name.toLowerCase() === cleanCid),
               );
               if (batchAtt && batchAtt.fileUrl) {
@@ -201,7 +201,7 @@ const processMessageAttachments = async (
                   (a) =>
                     (a.contentId &&
                       a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                        cleanCid) ||
+                      cleanCid) ||
                     (a.name && a.name.toLowerCase() === cleanCid),
                 );
                 if (threadAtt && threadAtt.fileUrl) {
@@ -230,7 +230,7 @@ const processMessageAttachments = async (
                   (a) =>
                     (a.contentId &&
                       a.contentId.replace(/[<>]/g, "").toLowerCase() ===
-                        cleanCid) ||
+                      cleanCid) ||
                     (a.name && a.name.toLowerCase() === cleanCid),
                 );
                 if (globalAtt && globalAtt.fileUrl) {
@@ -524,30 +524,30 @@ export const getSentEmailsFromDB = async (
           searchMatch: {
             $max: search
               ? {
-                  $or: [
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$subject", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                $or: [
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$subject", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$from.address", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$from.address", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$bodyPreview", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$bodyPreview", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                  ],
-                }
+                  },
+                ],
+              }
               : true,
           },
         },
@@ -635,30 +635,30 @@ export const getReceivedEmailsFromDB = async (
           searchMatch: {
             $max: search
               ? {
-                  $or: [
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$subject", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                $or: [
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$subject", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$from.address", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$from.address", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                    {
-                      $regexMatch: {
-                        input: { $ifNull: ["$bodyPreview", ""] },
-                        regex: search as string,
-                        options: "i",
-                      },
+                  },
+                  {
+                    $regexMatch: {
+                      input: { $ifNull: ["$bodyPreview", ""] },
+                      regex: search as string,
+                      options: "i",
                     },
-                  ],
-                }
+                  },
+                ],
+              }
               : true,
           },
         },
@@ -827,20 +827,20 @@ async function searchUserMailboxForContact(
       },
     });
 
-      const graphData: any = await graphResponse.json();
-      if (!graphResponse.ok) {
-        const errMsg = graphData?.error?.message || "";
-        // Skip invalid users (personal emails not in M365 tenant) rather than failing
-        if (errMsg.includes("is invalid") || errMsg.includes("does not exist") || errMsg.includes("not found")) {
-          console.warn(`Skipping ${userEmail} — not a valid Microsoft 365 user`);
-        } else {
-          console.warn(
-            `Graph API error searching ${userEmail} for ${contactEmail}:`,
-            errMsg,
-          );
-        }
-        break;
+    const graphData: any = await graphResponse.json();
+    if (!graphResponse.ok) {
+      const errMsg = graphData?.error?.message || "";
+      // Skip invalid users (personal emails not in M365 tenant) rather than failing
+      if (errMsg.includes("is invalid") || errMsg.includes("does not exist") || errMsg.includes("not found")) {
+        console.warn(`Skipping ${userEmail} — not a valid Microsoft 365 user`);
+      } else {
+        console.warn(
+          `Graph API error searching ${userEmail} for ${contactEmail}:`,
+          errMsg,
+        );
       }
+      break;
+    }
 
     const messages = graphData.value || [];
     if (messages.length === 0) break;
@@ -859,6 +859,8 @@ async function searchUserMailboxForContact(
       seenIds.add(msg.id);
 
       await processMessageAttachments(accessToken, userEmail, msg);
+
+
 
       results.push({
         updateOne: {

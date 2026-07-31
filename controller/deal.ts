@@ -184,6 +184,185 @@ export const getDeals = async (
             },
             { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
 
+            // Lookup notes for this hospital and product
+            {
+              $lookup: {
+                from: "notes",
+                let: { hospitalId: "$hospital._id", productId: "$products.product._id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$hospital", "$$hospitalId"] },
+                          {
+                            $or: [
+                              { $in: ["$$productId", { $ifNull: ["$products", []] }] },
+                              { $eq: [{ $size: { $ifNull: ["$products", []] } }, 0] }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  { $project: { createdAt: 1 } }
+                ],
+                as: "notes"
+              }
+            },
+
+            // Lookup call logs for this hospital and product
+            {
+              $lookup: {
+                from: "calllogs",
+                let: { hospitalId: "$hospital._id", productId: "$products.product._id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$hospital", "$$hospitalId"] },
+                          {
+                            $or: [
+                              { $in: ["$$productId", { $ifNull: ["$products", []] }] },
+                              { $eq: [{ $size: { $ifNull: ["$products", []] } }, 0] }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  { $project: { Date: 1 } }
+                ],
+                as: "calllogs"
+              }
+            },
+
+            // Lookup tasks for this hospital and product
+            {
+              $lookup: {
+                from: "tasks",
+                let: { hospitalId: "$hospital._id", productId: "$products.product._id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$hospital", "$$hospitalId"] },
+                          {
+                            $or: [
+                              { $in: ["$$productId", { $ifNull: ["$products", []] }] },
+                              { $eq: [{ $size: { $ifNull: ["$products", []] } }, 0] }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  { $project: { dueDate: 1, completed: 1, updatedAt: 1 } }
+                ],
+                as: "tasks"
+              }
+            },
+
+            // Compute lastActivityDate and nextActivityDate
+            {
+              $addFields: {
+                noteDates: {
+                  $map: {
+                    input: "$notes",
+                    as: "n",
+                    in: "$$n.createdAt"
+                  }
+                },
+                callDates: {
+                  $map: {
+                    input: "$calllogs",
+                    as: "c",
+                    in: "$$c.Date"
+                  }
+                },
+                completedTaskDates: {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: "$tasks",
+                        as: "t",
+                        cond: { $eq: ["$$t.completed", true] }
+                      }
+                    },
+                    as: "t",
+                    in: "$$t.updatedAt"
+                  }
+                },
+                futureTaskDates: {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: "$tasks",
+                        as: "t",
+                        cond: {
+                          $and: [
+                            { $eq: ["$$t.completed", false] },
+                            { $gte: ["$$t.dueDate", new Date()] }
+                          ]
+                        }
+                      }
+                    },
+                    as: "t",
+                    in: "$$t.dueDate"
+                  }
+                }
+              }
+            },
+            {
+              $addFields: {
+                allPastDates: {
+                  $concatArrays: ["$noteDates", "$callDates", "$completedTaskDates"]
+                }
+              }
+            },
+            {
+              $addFields: {
+                lastActivityDate: {
+                  $reduce: {
+                    input: "$allPastDates",
+                    initialValue: null,
+                    in: {
+                      $cond: [
+                        {
+                          $or: [
+                            { $eq: ["$$value", null] },
+                            { $gt: ["$$this", "$$value"] }
+                          ]
+                        },
+                        "$$this",
+                        "$$value"
+                      ]
+                    }
+                  }
+                },
+                nextActivityDate: {
+                  $reduce: {
+                    input: "$futureTaskDates",
+                    initialValue: null,
+                    in: {
+                      $cond: [
+                        {
+                          $or: [
+                            { $eq: ["$$value", null] },
+                            { $lt: ["$$this", "$$value"] }
+                          ]
+                        },
+                        "$$this",
+                        "$$value"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+
             {
               $project: {
                 dealId: "$_id",
@@ -220,6 +399,8 @@ export const getDeals = async (
                 leadSource: "$products.leadSource",
                 leadSourceDetails: "$products.leadSourceDetails",
                 expectedCloseDate: "$products.expectedCloseDate",
+                lastActivityDate: 1,
+                nextActivityDate: 1,
               },
             },
             { $sort: { [sortBy]: sortOrder } },
