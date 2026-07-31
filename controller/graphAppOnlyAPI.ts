@@ -815,108 +815,179 @@ async function searchUserMailboxForContact(
   hospitalId: mongoose.Types.ObjectId,
 ): Promise<any[]> {
   const results: any[] = [];
-  const seenIds = new Set<string>();
-  const kql = `"${contactEmail}"`;
-  let url: string | null = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$search=${encodeURIComponent(kql)}&$top=100&$select=${select}`;
+  const fetchedIds = new Set<string>();
+  const messages: any[] = [];
 
-  while (url) {
-    const graphResponse = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        ConsistencyLevel: "eventual",
-      },
+  // Query 1: Direct live filter for incoming emails (instant, covers calendar invites)
+  try {
+    const filterQuery = `from/emailAddress/address eq '${contactEmail}' and receivedDateTime ge ${eightMonthsAgo.toISOString()}`;
+    const filterUrl = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$filter=${encodeURIComponent(filterQuery)}&$top=100&$select=${select}`;
+    const filterRes: any = await fetch(filterUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
+    if (filterRes.ok) {
+      const filterData: any = await filterRes.json();
 
-    const graphData: any = await graphResponse.json();
 
-    if (!graphResponse.ok) {
-      const errMsg = graphData?.error?.message || "";
-      // Skip invalid users (personal emails not in M365 tenant) rather than failing
-      if (errMsg.includes("is invalid") || errMsg.includes("does not exist") || errMsg.includes("not found")) {
-        console.warn(`Skipping ${userEmail} — not a valid Microsoft 365 user`);
-      } else {
-        console.warn(
-          `Graph API error searching ${userEmail} for ${contactEmail}:`,
-          errMsg,
-        );
-      }
-      break;
-    }
-
-    const messages = graphData.value || [];
-    if (messages.length === 0) break;
-
-    for (const msg of messages) {
-      const msgDate = new Date(msg.receivedDateTime || msg.sentDateTime);
-      if (msgDate < eightMonthsAgo) continue;
-      if (seenIds.has(msg.id)) continue;
-      seenIds.add(msg.id);
-
-      let fullMsg = msg;
-      try {
-        const fullMsgResponse = await fetch(
-          `https://graph.microsoft.com/v1.0/users/${userEmail}/messages/${msg.id}?$select=${select}`,
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }
-        );
-        if (fullMsgResponse.ok) {
-          fullMsg = await fullMsgResponse.json();
-        } else {
-          const errData = await fullMsgResponse.json();
-          console.warn(`[Email Sync] Graph API error fetching message details for ${msg.id}:`, errData?.error?.message);
+      for (const m of filterData.value || []) {
+        if (!fetchedIds.has(m.id)) {
+          fetchedIds.add(m.id);
+          messages.push(m);
         }
-      } catch (err: any) {
-        console.warn(`[Email Sync] Failed to fetch full message details for ${msg.id}: ${err.message}`);
       }
+    }
+  } catch (err: any) {
+    console.warn(`[Email Sync] Filter query failed for ${userEmail}: ${err.message}`);
+  }
 
-      // Perform envelope check on the FULL message, not the stripped search result
-      if (!isContactInEnvelope(fullMsg, contactEmail)) continue;
-
-      await processMessageAttachments(accessToken, userEmail, fullMsg);
-
-      results.push({
-        updateOne: {
-          filter: {
-            internetMessageId: fullMsg.internetMessageId,
-            hospital: hospitalId,
-          },
-          update: {
-            $set: {
-              graphId: fullMsg.id,
-              internetMessageId: fullMsg.internetMessageId,
-              sender: fullMsg.sender?.emailAddress,
-              from: fullMsg.from?.emailAddress,
-              toRecipients:
-                fullMsg.toRecipients?.map((r: any) => r.emailAddress) || [],
-              ccRecipients:
-                fullMsg.ccRecipients?.map((r: any) => r.emailAddress) || [],
-              bccRecipients:
-                fullMsg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-              subject: fullMsg.subject,
-              bodyPreview: fullMsg.bodyPreview,
-              receivedDateTime: fullMsg.receivedDateTime,
-              sentDateTime: fullMsg.sentDateTime,
-              hasAttachments: fullMsg.hasAttachments,
-              isRead: fullMsg.isRead,
-              isDraft: fullMsg.isDraft,
-              webLink: fullMsg.webLink,
-              conversationId: fullMsg.conversationId,
-              importance: fullMsg.importance,
-              attachments: fullMsg.attachments,
-              hospital: hospitalId,
-              crmUser: crmUserId,
-              normalizedSubject: normalizeSubject(fullMsg.subject || ""),
-              "body.content": fullMsg.body?.content,
-              "body.contentType": fullMsg.body?.contentType,
-            },
-          },
-          upsert: true,
+  // Query 2: Search query for other messages (eventual, covers sent and CC'd)
+  try {
+    const kql = `"${contactEmail}"`;
+    let searchUrl: string | null = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$search=${encodeURIComponent(kql)}&$top=100&$select=${select}`;
+    while (searchUrl) {
+      const searchRes: any = await fetch(searchUrl, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ConsistencyLevel: "eventual",
         },
       });
+      if (!searchRes.ok) {
+        const errData: any = await searchRes.json();
+        const errMsg = errData?.error?.message || "";
+        if (errMsg.includes("is invalid") || errMsg.includes("does not exist") || errMsg.includes("not found")) {
+          console.warn(`Skipping ${userEmail} — not a valid Microsoft 365 user`);
+        } else {
+          console.warn(`Graph API error searching ${userEmail}: ${errMsg}`);
+        }
+        break;
+      }
+      const searchData: any = await searchRes.json();
+
+
+      const value = searchData.value || [];
+      if (value.length === 0) break;
+      
+      for (const m of value) {
+        if (!fetchedIds.has(m.id)) {
+          fetchedIds.add(m.id);
+          messages.push(m);
+        }
+      }
+      searchUrl = searchData["@odata.nextLink"] || null;
+    }
+  } catch (err: any) {
+    console.warn(`[Email Sync] Search query failed for ${userEmail}: ${err.message}`);
+  }
+
+  // 1. Gather all conversation IDs from directly matched emails (Filter & Search)
+  const seedConversationIds = new Set<string>();
+  for (const m of messages) {
+    if (m.conversationId) {
+      seedConversationIds.add(m.conversationId);
+    }
+  }
+
+  // 2. Gather all conversation IDs already stored in the DB for this hospital
+  try {
+    const existingThreadIds = await Email.find({ hospital: hospitalId }).distinct("conversationId");
+    for (const id of existingThreadIds) {
+      if (id) seedConversationIds.add(id);
+    }
+  } catch (err: any) {
+    console.warn(`[Email Sync] Failed to query existing conversation IDs: ${err.message}`);
+  }
+
+  // 3. Load ALL messages for each target conversation ID
+  const allThreadMessages: any[] = [];
+  const processedMessageIds = new Set<string>();
+
+  for (const conversationId of seedConversationIds) {
+    try {
+      const threadFilter = `conversationId eq '${conversationId}' and receivedDateTime ge ${eightMonthsAgo.toISOString()}`;
+      const threadUrl = `https://graph.microsoft.com/v1.0/users/${userEmail}/messages?$filter=${encodeURIComponent(threadFilter)}&$top=100&$select=${select}`;
+      const threadRes: any = await fetch(threadUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (threadRes.ok) {
+        const threadData = await threadRes.json();
+        for (const m of threadData.value || []) {
+          if (!processedMessageIds.has(m.id)) {
+            processedMessageIds.add(m.id);
+            allThreadMessages.push(m);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Email Sync] Failed to fetch thread messages for conversation ${conversationId}: ${err.message}`);
+    }
+  }
+
+  // 4. Process and save all thread messages
+  for (const msg of allThreadMessages) {
+    const msgDate = new Date(msg.receivedDateTime || msg.sentDateTime);
+    if (msgDate < eightMonthsAgo) continue;
+
+    let fullMsg = msg;
+    try {
+      const fullMsgResponse = await fetch(
+        `https://graph.microsoft.com/v1.0/users/${userEmail}/messages/${msg.id}?$select=${select}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+      if (fullMsgResponse.ok) {
+        fullMsg = await fullMsgResponse.json();
+      } else {
+        const errData = await fullMsgResponse.json();
+        console.warn(`[Email Sync] Graph API error fetching message details for ${msg.id}:`, errData?.error?.message);
+      }
+    } catch (err: any) {
+      console.warn(`[Email Sync] Failed to fetch full message details for ${msg.id}: ${err.message}`);
     }
 
-    url = graphData["@odata.nextLink"] || null;
+    await processMessageAttachments(accessToken, userEmail, fullMsg);
+
+    const uniqueMsgId = fullMsg.internetMessageId || fullMsg.id;
+
+    results.push({
+      updateOne: {
+        filter: {
+          internetMessageId: uniqueMsgId,
+          hospital: hospitalId,
+        },
+        update: {
+          $set: {
+            graphId: fullMsg.id,
+            internetMessageId: uniqueMsgId,
+            sender: fullMsg.sender?.emailAddress,
+            from: fullMsg.from?.emailAddress,
+            toRecipients:
+              fullMsg.toRecipients?.map((r: any) => r.emailAddress) || [],
+            ccRecipients:
+              fullMsg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+            bccRecipients:
+              fullMsg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+            subject: fullMsg.subject,
+            bodyPreview: fullMsg.bodyPreview,
+            receivedDateTime: fullMsg.receivedDateTime,
+            sentDateTime: fullMsg.sentDateTime,
+            hasAttachments: fullMsg.hasAttachments,
+            isRead: fullMsg.isRead,
+            isDraft: fullMsg.isDraft,
+            webLink: fullMsg.webLink,
+            conversationId: fullMsg.conversationId,
+            importance: fullMsg.importance,
+            attachments: fullMsg.attachments,
+            hospital: hospitalId,
+            crmUser: crmUserId,
+            normalizedSubject: normalizeSubject(fullMsg.subject || ""),
+            "body.content": fullMsg.body?.content,
+            "body.contentType": fullMsg.body?.contentType,
+          },
+        },
+        upsert: true,
+      },
+    });
   }
 
   return results;
@@ -928,6 +999,8 @@ export const syncHospitalEmails = async (
 ): Promise<void> => {
   try {
     const { hospitalId } = req.body;
+
+
 
     if (!hospitalId) {
       res.status(400).json({
