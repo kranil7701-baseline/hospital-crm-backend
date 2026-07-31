@@ -118,6 +118,18 @@ const connectDB = async () => {
           console.error("Index drop info for email_1:", err.message);
         }
       }
+      try {
+        if (m.connection.db) {
+          await m.connection.db.collection("emails").dropIndex("graphId_1_hospital_1_crmUser_1");
+          console.log(
+            "✅ Successfully dropped unique graphId_1_hospital_1_crmUser_1 index from Email collection",
+          );
+        }
+      } catch (err: any) {
+        if (err.code !== 27 && err.codeName !== "IndexNotFound") {
+          console.error("Index drop info for graphId_1_hospital_1_crmUser_1:", err.message);
+        }
+      }
       return m;
     });
   }

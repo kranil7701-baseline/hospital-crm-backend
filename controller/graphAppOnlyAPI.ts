@@ -790,7 +790,7 @@ export const replyToMessage = async (
   }
 };
 
-const THREE_MONTHS_MS = 3 * 30 * 24 * 60 * 60 * 1000;
+const EIGHT_MONTHS_MS = 8 * 30 * 24 * 60 * 60 * 1000;
 
 /** Check if a contact email appears in the message envelope (from, to, cc, bcc) */
 function isContactInEnvelope(msg: any, contactEmail: string): boolean {
@@ -809,7 +809,7 @@ async function searchUserMailboxForContact(
   accessToken: string,
   userEmail: string,
   contactEmail: string,
-  threeMonthsAgo: Date,
+  eightMonthsAgo: Date,
   select: string,
   crmUserId: mongoose.Types.ObjectId,
   hospitalId: mongoose.Types.ObjectId,
@@ -828,6 +828,7 @@ async function searchUserMailboxForContact(
     });
 
     const graphData: any = await graphResponse.json();
+
     if (!graphResponse.ok) {
       const errMsg = graphData?.error?.message || "";
       // Skip invalid users (personal emails not in M365 tenant) rather than failing
@@ -845,57 +846,69 @@ async function searchUserMailboxForContact(
     const messages = graphData.value || [];
     if (messages.length === 0) break;
 
-    const allOlder = messages.every((msg: any) => {
-      const d = new Date(msg.receivedDateTime || msg.sentDateTime);
-      return d < threeMonthsAgo;
-    });
-    if (allOlder) break;
-
     for (const msg of messages) {
       const msgDate = new Date(msg.receivedDateTime || msg.sentDateTime);
-      if (msgDate < threeMonthsAgo) continue;
+      if (msgDate < eightMonthsAgo) continue;
       if (seenIds.has(msg.id)) continue;
-      if (!isContactInEnvelope(msg, contactEmail)) continue;
       seenIds.add(msg.id);
 
-      await processMessageAttachments(accessToken, userEmail, msg);
+      let fullMsg = msg;
+      try {
+        const fullMsgResponse = await fetch(
+          `https://graph.microsoft.com/v1.0/users/${userEmail}/messages/${msg.id}?$select=${select}`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+        if (fullMsgResponse.ok) {
+          fullMsg = await fullMsgResponse.json();
+        } else {
+          const errData = await fullMsgResponse.json();
+          console.warn(`[Email Sync] Graph API error fetching message details for ${msg.id}:`, errData?.error?.message);
+        }
+      } catch (err: any) {
+        console.warn(`[Email Sync] Failed to fetch full message details for ${msg.id}: ${err.message}`);
+      }
 
+      // Perform envelope check on the FULL message, not the stripped search result
+      if (!isContactInEnvelope(fullMsg, contactEmail)) continue;
 
+      await processMessageAttachments(accessToken, userEmail, fullMsg);
 
       results.push({
         updateOne: {
           filter: {
-            graphId: msg.id,
+            internetMessageId: fullMsg.internetMessageId,
             hospital: hospitalId,
-            crmUser: crmUserId,
           },
           update: {
             $set: {
-              graphId: msg.id,
-              sender: msg.sender?.emailAddress,
-              from: msg.from?.emailAddress,
+              graphId: fullMsg.id,
+              internetMessageId: fullMsg.internetMessageId,
+              sender: fullMsg.sender?.emailAddress,
+              from: fullMsg.from?.emailAddress,
               toRecipients:
-                msg.toRecipients?.map((r: any) => r.emailAddress) || [],
+                fullMsg.toRecipients?.map((r: any) => r.emailAddress) || [],
               ccRecipients:
-                msg.ccRecipients?.map((r: any) => r.emailAddress) || [],
+                fullMsg.ccRecipients?.map((r: any) => r.emailAddress) || [],
               bccRecipients:
-                msg.bccRecipients?.map((r: any) => r.emailAddress) || [],
-              subject: msg.subject,
-              bodyPreview: msg.bodyPreview,
-              receivedDateTime: msg.receivedDateTime,
-              sentDateTime: msg.sentDateTime,
-              hasAttachments: msg.hasAttachments,
-              isRead: msg.isRead,
-              isDraft: msg.isDraft,
-              webLink: msg.webLink,
-              conversationId: msg.conversationId,
-              importance: msg.importance,
-              attachments: msg.attachments,
+                fullMsg.bccRecipients?.map((r: any) => r.emailAddress) || [],
+              subject: fullMsg.subject,
+              bodyPreview: fullMsg.bodyPreview,
+              receivedDateTime: fullMsg.receivedDateTime,
+              sentDateTime: fullMsg.sentDateTime,
+              hasAttachments: fullMsg.hasAttachments,
+              isRead: fullMsg.isRead,
+              isDraft: fullMsg.isDraft,
+              webLink: fullMsg.webLink,
+              conversationId: fullMsg.conversationId,
+              importance: fullMsg.importance,
+              attachments: fullMsg.attachments,
               hospital: hospitalId,
               crmUser: crmUserId,
-              normalizedSubject: normalizeSubject(msg.subject || ""),
-              "body.content": msg.body?.content,
-              "body.contentType": msg.body?.contentType,
+              normalizedSubject: normalizeSubject(fullMsg.subject || ""),
+              "body.content": fullMsg.body?.content,
+              "body.contentType": fullMsg.body?.contentType,
             },
           },
           upsert: true,
@@ -944,10 +957,10 @@ export const syncHospitalEmails = async (
     }
 
     const accessToken = await getAppOnlyToken();
-    const threeMonthsAgo = new Date(Date.now() - THREE_MONTHS_MS);
+    const eightMonthsAgo = new Date(Date.now() - EIGHT_MONTHS_MS);
     const hospitalObjId = new mongoose.Types.ObjectId(hospitalId);
     const select =
-      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview";
+      "body,sender,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,sentDateTime,hasAttachments,isRead,isDraft,webLink,conversationId,importance,bodyPreview,internetMessageId";
 
     let totalSynced = 0;
     let bulkOps: any[] = [];
@@ -969,7 +982,7 @@ export const syncHospitalEmails = async (
           accessToken,
           userEmail,
           contactEmail,
-          threeMonthsAgo,
+          eightMonthsAgo,
           select,
           user._id,
           hospitalObjId,
