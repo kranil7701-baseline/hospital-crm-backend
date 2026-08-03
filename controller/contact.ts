@@ -59,7 +59,6 @@ export const getContacts = async (
         { lastName: { $regex: search, $options: "i" } },
         { fullName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
-        { designation: { $regex: search, $options: "i" } },
         { phoneNumber: { $regex: search, $options: "i" } },
         { "hospitalDetails.hospitalName": { $regex: search, $options: "i" } },
       ];

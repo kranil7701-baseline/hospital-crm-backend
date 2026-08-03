@@ -9,6 +9,9 @@ import {
   getIDNHospitalDealsbyID,
   GetIDNNameIDS,
   getAllIDNsDeals00,
+  addIDNNote,
+  updateIDNNote,
+  deleteIDNNote,
 } from "../controller/idn.ts";
 import { protect, authorizeRoles } from "../middleware/authMiddleware.ts";
 import { UserRole } from "../model/User.ts";
@@ -38,5 +41,10 @@ router.delete(
   authorizeRoles(UserRole.ADMIN, UserRole.CUSTOMER_SUCCESS),
   deleteIDN,
 );
+
+// IDN Notes Endpoints
+router.post("/:id/notes", addIDNNote);
+router.put("/:id/notes/:noteId", updateIDNNote);
+router.delete("/:id/notes/:noteId", deleteIDNNote);
 
 export default router;

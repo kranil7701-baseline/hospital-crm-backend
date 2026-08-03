@@ -314,7 +314,12 @@ export const getIDNById = async (
       return;
     }
 
-    const idn = await IDN.findById(id).populate("hospitals");
+    const idn = await IDN.findById(id)
+      .populate("hospitals")
+      .populate({
+        path: "notes.user",
+        select: "name",
+      });
 
     if (!idn) {
       res.status(404).json({
@@ -416,6 +421,136 @@ export const updateIDN = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: "Failed to update IDN",
+      error: error.message,
+    });
+  }
+};
+
+export const addIDNNote = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+
+    if (!content || typeof content !== "string" || !content.trim()) {
+      res.status(400).json({ success: false, message: "Content is required" });
+      return;
+    }
+
+    const idn = await IDN.findById(id);
+    if (!idn) {
+      res.status(404).json({ success: false, message: "IDN not found" });
+      return;
+    }
+
+    const newNote = {
+      content: content.trim(),
+      user: new mongoose.Types.ObjectId(req.user?._id as unknown as string),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    idn.notes.push(newNote);
+    await idn.save();
+
+    // Populate user name for the response
+    const populatedIdn = await IDN.findById(id).populate({
+      path: "notes.user",
+      select: "name",
+    });
+
+    res.status(201).json({
+      success: true,
+      data: populatedIdn?.notes || [],
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to add note",
+      error: error.message,
+    });
+  }
+};
+
+export const updateIDNNote = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id, noteId } = req.params;
+    const { content } = req.body;
+
+    if (!content || typeof content !== "string" || !content.trim()) {
+      res.status(400).json({ success: false, message: "Content is required" });
+      return;
+    }
+
+    const idn = await IDN.findById(id);
+    if (!idn) {
+      res.status(404).json({ success: false, message: "IDN not found" });
+      return;
+    }
+
+    const note = idn.notes.find((n: any) => n._id.toString() === noteId);
+    if (!note) {
+      res.status(404).json({ success: false, message: "Note not found" });
+      return;
+    }
+
+    note.content = content.trim();
+    note.updatedAt = new Date();
+
+    await idn.save();
+
+    const populatedIdn = await IDN.findById(id).populate({
+      path: "notes.user",
+      select: "name",
+    });
+
+    res.status(200).json({
+      success: true,
+      data: populatedIdn?.notes || [],
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update note",
+      error: error.message,
+    });
+  }
+};
+
+export const deleteIDNNote = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id, noteId } = req.params;
+
+    const idn = await IDN.findById(id);
+    if (!idn) {
+      res.status(404).json({ success: false, message: "IDN not found" });
+      return;
+    }
+
+    idn.notes = idn.notes.filter((n: any) => n._id.toString() !== noteId);
+    await idn.save();
+
+    const populatedIdn = await IDN.findById(id).populate({
+      path: "notes.user",
+      select: "name",
+    });
+
+    res.status(200).json({
+      success: true,
+      data: populatedIdn?.notes || [],
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete note",
       error: error.message,
     });
   }

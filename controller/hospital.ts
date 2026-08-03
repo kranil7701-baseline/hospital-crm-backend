@@ -156,7 +156,14 @@ export const getHospitalByHospitalId = async (
 
     // 1. Get hospital
     const hospital = await Hospital.findById(id)
-      .populate("idn", "name")
+      .populate({
+        path: "idn",
+        select: "name notes",
+        populate: {
+          path: "notes.user",
+          select: "name",
+        },
+      })
       .populate("gpo", "name")
       .populate("primaryRep", "name")
       .populate("secondaryRep", "name");
