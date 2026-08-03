@@ -205,7 +205,7 @@ export const getDeals = async (
                       }
                     }
                   },
-                  { $project: { createdAt: 1 } }
+                  { $project: { createdAt: 1, updatedAt: 1 } }
                 ],
                 as: "notes"
               }
@@ -232,7 +232,7 @@ export const getDeals = async (
                       }
                     }
                   },
-                  { $project: { Date: 1 } }
+                  { $project: { Date: 1, createdAt: 1, updatedAt: 1 } }
                 ],
                 as: "calllogs"
               }
@@ -259,7 +259,7 @@ export const getDeals = async (
                       }
                     }
                   },
-                  { $project: { dueDate: 1, completed: 1, updatedAt: 1 } }
+                  { $project: { dueDate: 1, completed: 1, createdAt: 1, updatedAt: 1 } }
                 ],
                 as: "tasks"
               }
@@ -269,30 +269,30 @@ export const getDeals = async (
             {
               $addFields: {
                 noteDates: {
-                  $map: {
+                  $reduce: {
                     input: "$notes",
-                    as: "n",
-                    in: "$$n.createdAt"
+                    initialValue: [],
+                    in: {
+                      $concatArrays: ["$$value", ["$$this.createdAt", "$$this.updatedAt"]]
+                    }
                   }
                 },
                 callDates: {
-                  $map: {
+                  $reduce: {
                     input: "$calllogs",
-                    as: "c",
-                    in: "$$c.Date"
+                    initialValue: [],
+                    in: {
+                      $concatArrays: ["$$value", ["$$this.Date", "$$this.createdAt", "$$this.updatedAt"]]
+                    }
                   }
                 },
-                completedTaskDates: {
-                  $map: {
-                    input: {
-                      $filter: {
-                        input: "$tasks",
-                        as: "t",
-                        cond: { $eq: ["$$t.completed", true] }
-                      }
-                    },
-                    as: "t",
-                    in: "$$t.updatedAt"
+                taskDates: {
+                  $reduce: {
+                    input: "$tasks",
+                    initialValue: [],
+                    in: {
+                      $concatArrays: ["$$value", ["$$this.createdAt", "$$this.updatedAt"]]
+                    }
                   }
                 },
                 futureTaskDates: {
@@ -302,10 +302,7 @@ export const getDeals = async (
                         input: "$tasks",
                         as: "t",
                         cond: {
-                          $and: [
-                            { $eq: ["$$t.completed", false] },
-                            { $gte: ["$$t.dueDate", new Date()] }
-                          ]
+                          $ne: ["$$t.completed", true]
                         }
                       }
                     },
@@ -318,7 +315,7 @@ export const getDeals = async (
             {
               $addFields: {
                 allPastDates: {
-                  $concatArrays: ["$noteDates", "$callDates", "$completedTaskDates"]
+                  $concatArrays: ["$noteDates", "$callDates", "$taskDates"]
                 }
               }
             },

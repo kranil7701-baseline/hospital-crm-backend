@@ -57,6 +57,7 @@ export const getContacts = async (
       matchStage.$or = [
         { firstName: { $regex: search, $options: "i" } },
         { lastName: { $regex: search, $options: "i" } },
+        { fullName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { designation: { $regex: search, $options: "i" } },
         { phoneNumber: { $regex: search, $options: "i" } },
@@ -77,6 +78,17 @@ export const getContacts = async (
         $unwind: {
           path: "$hospitalDetails",
           preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          fullName: {
+            $concat: [
+              { $ifNull: ["$firstName", ""] },
+              " ",
+              { $ifNull: ["$lastName", ""] },
+            ],
+          },
         },
       },
       {
