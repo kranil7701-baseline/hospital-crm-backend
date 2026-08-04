@@ -235,12 +235,10 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
       matchStage.products = new mongoose.Types.ObjectId(productId);
     }
 
-    const dueOnly = req.query.dueOnly === "true";
-    if (dueOnly) {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+    // By default, hide completed tasks. Only show all (including completed) when showAll=true.
+    const showAll = req.query.showAll === "true";
+    if (!showAll) {
       matchStage.completed = false;
-      matchStage.dueDate = { $gte: todayStart };
     }
 
     if (search) {
@@ -318,7 +316,25 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
         },
       },
 
-      { $sort: { dueDate: 1 } },
+      // Sort: incomplete first, then overdue at top, then soonest due date
+      {
+        $addFields: {
+          _sortPriority: {
+            $cond: [
+              { $eq: ["$completed", true] },
+              2, // completed → bottom
+              {
+                $cond: [
+                  { $lt: ["$dueDate", new Date()] },
+                  0, // overdue → top
+                  1, // upcoming
+                ]
+              }
+            ]
+          }
+        }
+      },
+      { $sort: { _sortPriority: 1, dueDate: 1 } },
 
       {
         $facet: {
