@@ -50,7 +50,7 @@ export const getContacts = async (
     }
 
     if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
-      matchStage.hospital = new mongoose.Types.ObjectId(hospitalId);
+      matchStage.hospitals = new mongoose.Types.ObjectId(hospitalId);
     }
 
     if (search) {
@@ -68,15 +68,9 @@ export const getContacts = async (
       {
         $lookup: {
           from: "hospitals",
-          localField: "hospital",
+          localField: "hospitals",
           foreignField: "_id",
           as: "hospitalDetails",
-        },
-      },
-      {
-        $unwind: {
-          path: "$hospitalDetails",
-          preserveNullAndEmptyArrays: true,
         },
       },
       {
@@ -92,6 +86,13 @@ export const getContacts = async (
       },
       {
         $match: matchStage,
+      },
+      {
+        $group: {
+          _id: "$_id",
+          firstName: { $first: "$firstName" },
+          lastName: { $first: "$lastName" },
+        },
       },
       {
         $sort: {
@@ -114,7 +115,7 @@ export const getContacts = async (
       .select("-createdAt -updatedAt -__v -isPrimary")
       .populate("product", "name")
       .populate({
-        path: "hospital",
+        path: "hospitals",
         select: "hospitalName gpo idn",
         populate: [
           {
@@ -192,7 +193,7 @@ export const getContactById = async (
 
     const contact = await Contact.findById(id)
       .populate(
-        "hospital",
+        "hospitals",
         "hospitalName gpo idn city state zip idn gpo teamHospital magnetHospital _id address location",
       )
       .populate("product", "name _id")
@@ -224,35 +225,58 @@ export const createContact = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const { email, hospital } = req.body;
+    const { email, hospitals } = req.body;
 
-    const existingContact = await Contact.findOne({ email, hospital });
-
-    if (existingContact) {
-      res.status(400).json({
-        success: false,
-        message: "This contact is already associated with this hospital",
-      });
+    if (!hospitals || !Array.isArray(hospitals) || hospitals.length === 0) {
+      res.status(400).json({ success: false, message: "Hospitals list is required" });
       return;
     }
 
-    // Associate contact with the authenticated user
-    const contactData = {
-      ...req.body,
-      user: req.user?._id,
-    };
+    // Check if the contact email already exists globally
+    let contact = await Contact.findOne({ email });
 
-    const newContact = new Contact(contactData);
-    await newContact.save();
+    if (contact) {
+      // Add any new hospitals to their hospitals list
+      const existingHospitals = contact.hospitals.map((h: any) => h.toString());
+      const newHospitals = hospitals.filter((h: string) => !existingHospitals.includes(h));
 
-    await newContact.populate({
-      path: "hospital",
+      if (newHospitals.length === 0) {
+        res.status(400).json({
+          success: false,
+          message: "This contact is already associated with all selected hospitals",
+        });
+        return;
+      }
+
+      contact.hospitals.push(...newHospitals.map((id: string) => new mongoose.Types.ObjectId(id)));
+      
+      // Update other fields if provided in req.body
+      if (req.body.firstName) contact.firstName = req.body.firstName;
+      if (req.body.lastName) contact.lastName = req.body.lastName;
+      if (req.body.designation) contact.designation = req.body.designation;
+      if (req.body.phoneNumber) contact.phoneNumber = req.body.phoneNumber;
+      if (req.body.secondaryPhoneNumber) contact.secondaryPhoneNumber = req.body.secondaryPhoneNumber;
+      if (req.body.product) contact.product = req.body.product;
+
+      await contact.save();
+    } else {
+      // Create new contact
+      const contactData = {
+        ...req.body,
+        user: req.user?._id,
+      };
+      contact = new Contact(contactData);
+      await contact.save();
+    }
+
+    await contact.populate({
+      path: "hospitals",
       populate: [{ path: "idn" }, { path: "gpo" }],
     });
 
     res.status(201).json({
       success: true,
-      data: newContact,
+      data: contact,
     });
   } catch (error: any) {
     res.status(400).json({
@@ -284,9 +308,13 @@ export const deleteContact = async (
     if (!isPrivileged) {
       const isCreator = contact.user?.toString() === req.user?._id?.toString();
       let isHospitalUser = false;
-      if (contact.hospital) {
-        const hospital = await Hospital.findById(contact.hospital);
-        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
+      if (contact.hospitals && contact.hospitals.length > 0) {
+        const hospitals = await Hospital.find({ _id: { $in: contact.hospitals } });
+        isHospitalUser = hospitals.some(
+          (hospital) =>
+            hospital?.primaryRep?.toString() === req.user?._id?.toString() ||
+            hospital?.secondaryRep?.toString() === req.user?._id?.toString()
+        );
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({
@@ -297,11 +325,35 @@ export const deleteContact = async (
       }
     }
 
-    await Contact.findByIdAndDelete(id);
+    const hospitalId = req.query.hospitalId as string;
 
-    res
-      .status(200)
-      .json({ success: true, message: "Contact deleted successfully" });
+    if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
+      // Remove hospital ID from contact's hospitals array
+      contact.hospitals = contact.hospitals.filter(
+        (h) => h.toString() !== hospitalId
+      );
+
+      if (contact.hospitals.length === 0) {
+        await Contact.findByIdAndDelete(id);
+        res.status(200).json({
+          success: true,
+          message: "Contact deleted successfully as they have no remaining hospital associations",
+        });
+      } else {
+        await contact.save();
+        res.status(200).json({
+          success: true,
+          message: "Contact dissociated from this hospital successfully",
+        });
+      }
+    } else {
+      // Delete globally
+      await Contact.findByIdAndDelete(id);
+      res.status(200).json({
+        success: true,
+        message: "Contact deleted successfully",
+      });
+    }
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -332,9 +384,13 @@ export const updateContact = async (
     if (!isPrivileged) {
       const isCreator = existingContact.user?.toString() === req.user?._id?.toString();
       let isHospitalUser = false;
-      if (existingContact.hospital) {
-        const hospital = await Hospital.findById(existingContact.hospital);
-        isHospitalUser = hospital?.primaryRep?.toString() === req.user?._id?.toString() || hospital?.secondaryRep?.toString() === req.user?._id?.toString();
+      if (existingContact.hospitals && existingContact.hospitals.length > 0) {
+        const hospitals = await Hospital.find({ _id: { $in: existingContact.hospitals } });
+        isHospitalUser = hospitals.some(
+          (hospital) =>
+            hospital?.primaryRep?.toString() === req.user?._id?.toString() ||
+            hospital?.secondaryRep?.toString() === req.user?._id?.toString()
+        );
       }
       if (!isCreator && !isHospitalUser) {
         res.status(403).json({
@@ -346,15 +402,15 @@ export const updateContact = async (
     }
 
     const updateData = { ...req.body };
-    if (!updateData.hospital || updateData.hospital === "") {
-      delete updateData.hospital;
+    if (!updateData.hospitals || !Array.isArray(updateData.hospitals) || updateData.hospitals.length === 0) {
+      delete updateData.hospitals;
     }
 
     const updatedContact = await Contact.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     }).populate({
-      path: "hospital",
+      path: "hospitals",
       select: "hospitalName gpo idn",
       populate: [
         {

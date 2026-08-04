@@ -177,9 +177,9 @@ export const getHospitalByHospitalId = async (
     }
 
     // 2. Get contacts linked to hospital ✅
-    const contacts = await Contact.find({ hospital: id })
+    const contacts = await Contact.find({ hospitals: id })
       .select(
-        "firstName lastName phoneNumber designation email isPrimary product",
+        "firstName lastName phoneNumber designation email isPrimary product hospitals",
       )
       .populate("product", "name");
 
@@ -333,11 +333,13 @@ export const deleteHospital = async (
     await Promise.all([
       Deal.deleteMany({ hospital: id }),
       DocumentModel.deleteMany({ hospital: id }),
-      Contact.deleteMany({ hospital: id }),
       Notes.deleteMany({ hospital: id }),
       CallLogs.deleteMany({ hospital: id }),
       Task.deleteMany({ hospital: id }),
     ]);
+
+    await Contact.updateMany({ hospitals: id }, { $pull: { hospitals: id } });
+    await Contact.deleteMany({ hospitals: { $size: 0 } });
 
     await Hospital.findByIdAndDelete(id);
 
