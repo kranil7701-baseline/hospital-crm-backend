@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface ITaskAlertLog extends Document {
   taskId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
-  milestone: "6_DAY" | "3_DAY";
+  milestone: "6_DAY" | "3_DAY" | "CUSTOM";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,7 +22,7 @@ const TaskAlertLogSchema: Schema = new Schema(
     },
     milestone: {
       type: String,
-      enum: ["6_DAY", "3_DAY"],
+      enum: ["6_DAY", "3_DAY", "CUSTOM"],
       required: true,
     },
   },

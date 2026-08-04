@@ -152,4 +152,95 @@ export const initTaskCron = () => {
     },
     { timezone: "America/New_York" },
   );
+
+  // Custom scheduled reminders (runs every 15 minutes)
+  cron.schedule(
+    "*/15 * * * *",
+    async () => {
+      try {
+        const now = new Date();
+        const tasks = await Task.find({
+          reminderTime: { $lte: now },
+          reminders: { $in: ["email", "push"] },
+        })
+          .populate("user")
+          .populate("hospital", "hospitalName");
+
+        for (const task of tasks) {
+          const alreadySent = await TaskAlertLog.findOne({
+            taskId: task._id,
+            milestone: "CUSTOM",
+          });
+
+          if (alreadySent) {
+            continue;
+          }
+
+          const taskUser: any = task.user;
+          if (!taskUser || !taskUser._id) {
+            continue;
+          }
+
+          const hospitalName =
+            (task.hospital as any)?.hospitalName || "Unknown Hospital";
+          const subject = `Task Reminder: ${task.title}`;
+          const content = `
+            <p>Hello,</p>
+            <p>This is your scheduled reminder for the task: <strong>${task.title}</strong>.</p>
+            <p><strong>Task details:</strong></p>
+            <ul>
+              <li><strong>Hospital:</strong> ${hospitalName}</li>
+              <li><strong>Due Date & Time:</strong> ${task.dueDate.toLocaleString()}</li>
+              <li><strong>Description:</strong> ${task.description || "No description provided"}</li>
+            </ul>
+            <p>Please review the task and take any necessary actions.</p>
+            <p>View Task: <a href="${process.env.FRONTEND_URL || "#"}">${process.env.FRONTEND_URL || "#"}</a></p>
+            <p>Thank you.</p>
+          `;
+
+          let sentAtLeastOnce = false;
+
+          if (task.reminders.includes("push")) {
+            try {
+              await sendPushToUsers([taskUser._id.toString()], {
+                title: `Task Reminder: ${task.title}`,
+                message: `Task is due on ${task.dueDate.toLocaleString()} for ${hospitalName}.`,
+                url: `${process.env.FRONTEND_URL || "#"}${process.env.FRONTEND_URL ? `/tasks/${task._id}` : ""}`,
+              });
+              sentAtLeastOnce = true;
+            } catch (pushError) {
+              console.error("Custom task push notification failed:", pushError);
+            }
+          }
+
+          if (task.reminders.includes("email")) {
+            if (taskUser.email) {
+              try {
+                await sendGraphEmail(
+                  process.env.MS_GRAPH_FROM_EMAIL || "kmason@rfhealth.com",
+                  taskUser.email,
+                  subject,
+                  content,
+                );
+                sentAtLeastOnce = true;
+              } catch (emailError) {
+                console.error("Custom task email reminder failed:", emailError);
+              }
+            }
+          }
+
+          if (sentAtLeastOnce) {
+            await TaskAlertLog.create({
+              taskId: task._id,
+              userId: taskUser._id,
+              milestone: "CUSTOM",
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error in Custom Task Reminder Cron Job:", error);
+      }
+    },
+    { timezone: "America/New_York" }
+  );
 };

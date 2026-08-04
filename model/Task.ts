@@ -8,6 +8,7 @@ export interface ITask extends Document {
     user: mongoose.Types.ObjectId;
     completed: boolean;
     reminders: ('email' | 'push')[];
+    reminderTime?: Date;
     products?: mongoose.Types.ObjectId[];
     secondaryAssignees?: mongoose.Types.ObjectId[];
     createdAt: Date;
@@ -46,6 +47,9 @@ const TaskSchema: Schema = new Schema({
         type: [String],
         enum: ['email', 'push'],
         default: []
+    },
+    reminderTime: {
+        type: Date,
     },
     products: [{
         type: Schema.Types.ObjectId,

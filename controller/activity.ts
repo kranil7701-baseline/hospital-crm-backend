@@ -4,6 +4,7 @@ import Task from "../model/Task.ts";
 import Notes from "../model/Notes.ts";
 import CallLogs from "../model/CallLogs.ts";
 import Hospital from "../model/Hospital.ts";
+import TaskAlertLog from "../model/TaskAlertLog.ts";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import { handleMentions } from "../helper/mentionNotification.ts";
@@ -583,6 +584,10 @@ export const createActivity = async (
       delete activityData.contact;
     }
 
+    if (activityData.reminderTime === "" || activityData.reminderTime === null) {
+      delete activityData.reminderTime;
+    }
+
     // ✅ Mention detection
     if (type.toLowerCase() === "note" || type.toLowerCase() === "task") {
       const textToSearch = type.toLowerCase() === "note"
@@ -742,10 +747,20 @@ export const updateActivity = async (
       Object.entries(data).filter(([, v]) => v !== undefined && v !== ""),
     );
 
+    if (data.reminderTime === null || data.reminderTime === "") {
+      cleanData.reminderTime = null;
+    }
+
     const updatedActivity = await (model as any).findByIdAndUpdate(id, cleanData, {
       new: true,
       runValidators: true,
     }).populate(populateOptions);
+
+    if (type.toLowerCase() === "task" && updatedActivity) {
+      if (data.dueDate || data.reminderTime !== undefined || data.reminders) {
+        await TaskAlertLog.deleteMany({ taskId: id });
+      }
+    }
 
     if (!updatedActivity) {
       res.status(404).json({
