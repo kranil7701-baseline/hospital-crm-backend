@@ -39,6 +39,7 @@ export const getDashboardTasks = async (
       mentionRegexPattern = `(?:^|\\s)@${emailEscaped}(?:\\b|\\s|$)`;
     }
 
+    let permissionsCondition: any = null;
     if (!isAdminOrExecutive && userId) {
       const userObjectId = new mongoose.Types.ObjectId(userId);
       const orConditions: any[] = [
@@ -51,50 +52,51 @@ export const getDashboardTasks = async (
           { description: { $regex: mentionRegexPattern, $options: "i" } }
         );
       }
-      matchStage.$or = orConditions;
+      permissionsCondition = { $or: orConditions };
     }
 
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    const sevenDaysLater = new Date();
-    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-    sevenDaysLater.setHours(23, 59, 59, 999);
+    const fourteenDaysLater = new Date();
+    fourteenDaysLater.setDate(fourteenDaysLater.getDate() + 14);
+    fourteenDaysLater.setHours(23, 59, 59, 999);
 
-    matchStage.dueDate = {
-      $gte: now,
-      $lte: sevenDaysLater,
+    const dateCondition = {
+      $or: [
+        {
+          dueDate: {
+            $gte: now,
+            $lte: fourteenDaysLater,
+          },
+        },
+        {
+          dueDate: {
+            $lt: now,
+          },
+          completed: false,
+        },
+      ],
     };
 
+    let searchCondition: any = null;
     if (search) {
-      if (matchStage.$or) {
-        const userOrMentions = matchStage.$or;
-        delete matchStage.$or;
-        matchStage.$and = [
-          { $or: userOrMentions },
-          {
-            $or: [
-              { title: { $regex: search, $options: "i" } },
-              { description: { $regex: search, $options: "i" } },
-            ],
-          },
-        ];
-      } else {
-        matchStage.$or = [
-          {
-            title: {
-              $regex: search,
-              $options: "i",
-            },
-          },
-          {
-            description: {
-              $regex: search,
-              $options: "i",
-            },
-          },
-        ];
-      }
+      searchCondition = {
+        $or: [
+          { title: { $regex: search, $options: "i" } },
+          { description: { $regex: search, $options: "i" } },
+        ],
+      };
     }
+
+    const andConditions: any[] = [dateCondition];
+    if (permissionsCondition) {
+      andConditions.push(permissionsCondition);
+    }
+    if (searchCondition) {
+      andConditions.push(searchCondition);
+    }
+
+    matchStage.$and = andConditions;
 
     const pipeline: any[] = [
       { $match: matchStage },
@@ -158,7 +160,7 @@ export const getDashboardTasks = async (
         },
       },
 
-      { $sort: { createdAt: -1 } },
+      { $sort: { dueDate: 1 } },
 
       {
         $facet: {
