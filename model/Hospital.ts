@@ -15,6 +15,7 @@ export interface IHospital extends Document {
   magnetHospital: boolean;
   notes: string;
   contacts: mongoose.Types.ObjectId[];
+  primaryContacts: mongoose.Types.ObjectId[];
   documents: string[];
   ICUBeds: number;
   location: string;
@@ -35,6 +36,12 @@ const HospitalSchema: Schema = new Schema(
       ref: "GPO",
     },
     contacts: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Contact",
+      },
+    ],
+    primaryContacts: [
       {
         type: Schema.Types.ObjectId,
         ref: "Contact",

@@ -10,6 +10,7 @@ import {
 
   // getAllHospitalsDeals00,
   HospitalIDName,
+  togglePrimaryContact,
 } from "../controller/hospital.ts";
 import { protect, authorizeRoles } from "../middleware/authMiddleware.ts";
 import User, { UserRole } from "../model/User.ts";
@@ -22,6 +23,7 @@ router.get("/hospiptal-id-name", HospitalIDName);
 
 router.get("/all-hospitals", getHospitals);
 router.get("/all-hospitals-deals", getAllHospitalsDeals);
+router.patch("/:id/toggle-primary-contact", togglePrimaryContact);
 router.get("/:id", getHospitalByHospitalId);
 router.post(
   "/create",

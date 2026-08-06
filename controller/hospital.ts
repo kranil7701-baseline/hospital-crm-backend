@@ -13,6 +13,7 @@ import DocumentModel from "../model/Document.ts";
 import Notes from "../model/Notes.ts";
 import CallLogs from "../model/CallLogs.ts";
 import Task from "../model/Task.ts";
+import { buildFieldWordSearchCondition } from "../helper/searchHelper.ts";
 
 export const getHospitals = async (
   req: Request,
@@ -28,11 +29,10 @@ export const getHospitals = async (
     // Build match stage
     const matchStage: any = {};
 
-    if (search) {
-      matchStage.$or = [
-        { hospitalName: { $regex: search, $options: "i" } },
-        { city: { $regex: search, $options: "i" } },
-      ];
+    if (search.trim()) {
+      const hospitalNameCond = buildFieldWordSearchCondition("hospitalName", search);
+      const cityCond = buildFieldWordSearchCondition("city", search);
+      matchStage.$or = [hospitalNameCond, cityCond].filter(Boolean);
     }
 
     if (idn && mongoose.Types.ObjectId.isValid(idn)) {
@@ -212,12 +212,24 @@ export const getHospitalByHospitalId = async (
     // const totalBeds = icuBeds + dealBedsTotal;
     const totalBeds = hospital.totalBeds || 0;
 
-    // 4. Final response
+    // 4. Annotate contacts with isPrimary based on hospital's primaryContacts array
+    const primaryContactIds = (hospital.primaryContacts || []).map((id: any) => id.toString());
+    if ((hospital as any).primaryContact) {
+      primaryContactIds.push((hospital as any).primaryContact.toString());
+    }
+
+    const annotatedContacts = contacts.map((c: any) => {
+      const contactObj = c.toObject ? c.toObject() : { ...c };
+      contactObj.isPrimary = primaryContactIds.includes(contactObj._id.toString());
+      return contactObj;
+    });
+
+    // 5. Final response
     const responseData = {
       ...hospital.toObject(),
       beds: totalBeds, // ICU beds plus all deal product beds
       productInfo,
-      contacts, // Manually attached contacts
+      contacts: annotatedContacts, // Contacts with per-hospital isPrimary
       deals,
     };
 
@@ -229,6 +241,69 @@ export const getHospitalByHospitalId = async (
     res.status(500).json({
       success: false,
       message: "Error fetching hospital",
+      error: error.message,
+    });
+  }
+};
+
+export const togglePrimaryContact = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { contactId } = req.body;
+
+    const hospitalIdStr = typeof id === "string" ? id : "";
+    const contactIdStr = typeof contactId === "string" ? contactId : "";
+
+    if (!hospitalIdStr || !mongoose.Types.ObjectId.isValid(hospitalIdStr)) {
+      res.status(400).json({ success: false, message: "Invalid hospital ID" });
+      return;
+    }
+
+    if (!contactIdStr || !mongoose.Types.ObjectId.isValid(contactIdStr)) {
+      res.status(400).json({ success: false, message: "Invalid contact ID" });
+      return;
+    }
+
+    const hospital = await Hospital.findById(hospitalIdStr);
+    if (!hospital) {
+      res.status(404).json({ success: false, message: "Hospital not found" });
+      return;
+    }
+
+    if (!hospital.primaryContacts) {
+      hospital.primaryContacts = [];
+    }
+
+    const primaryIdsStr = hospital.primaryContacts.map((cId: any) => cId.toString());
+    const isCurrentlyPrimary = primaryIdsStr.includes(contactIdStr);
+
+    if (isCurrentlyPrimary) {
+      hospital.primaryContacts = hospital.primaryContacts.filter(
+        (cId: any) => cId.toString() !== contactIdStr
+      );
+      if ((hospital as any).primaryContact?.toString() === contactIdStr) {
+        (hospital as any).primaryContact = null;
+      }
+    } else {
+      hospital.primaryContacts.push(new mongoose.Types.ObjectId(contactIdStr));
+    }
+
+    await hospital.save();
+
+    res.status(200).json({
+      success: true,
+      message: !isCurrentlyPrimary
+        ? "Primary contact added successfully"
+        : "Primary contact removed successfully",
+      data: { primaryContacts: hospital.primaryContacts },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to toggle primary contact",
       error: error.message,
     });
   }
@@ -867,14 +942,13 @@ export const getAllHospitalsDeals = async (
     });
 
     // ================= SEARCH =================
-    if (search) {
+    if (search.trim()) {
+      const hospitalNameCond = buildFieldWordSearchCondition("hospitalName", search);
+      const cityCond = buildFieldWordSearchCondition("city", search);
+      const idnCond = buildFieldWordSearchCondition("idn.name", search);
       pipeline.push({
         $match: {
-          $or: [
-            { hospitalName: { $regex: search, $options: "i" } },
-            { city: { $regex: search, $options: "i" } },
-            { "idn.name": { $regex: search, $options: "i" } },
-          ],
+          $or: [hospitalNameCond, cityCond, idnCond].filter(Boolean),
         },
       });
     }

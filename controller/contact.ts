@@ -4,6 +4,7 @@ import Contact from "../model/Contact.ts";
 import Hospital from "../model/Hospital.ts";
 import mongoose from "mongoose";
 import { UserRole } from "../model/User.ts";
+import { buildFieldWordSearchCondition } from "../helper/searchHelper.ts";
 
 export const getContacts = async (
   req: AuthRequest,
@@ -53,15 +54,15 @@ export const getContacts = async (
       matchStage.hospitals = new mongoose.Types.ObjectId(hospitalId);
     }
 
-    if (search) {
+    if (search.trim()) {
       matchStage.$or = [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
-        { fullName: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { phoneNumber: { $regex: search, $options: "i" } },
-        { "hospitalDetails.hospitalName": { $regex: search, $options: "i" } },
-      ];
+        buildFieldWordSearchCondition("firstName", search),
+        buildFieldWordSearchCondition("lastName", search),
+        buildFieldWordSearchCondition("fullName", search),
+        buildFieldWordSearchCondition("email", search),
+        buildFieldWordSearchCondition("phoneNumber", search),
+        buildFieldWordSearchCondition("hospitalDetails.hospitalName", search),
+      ].filter(Boolean);
     }
 
     const matchedContacts = await Contact.aggregate([
@@ -269,6 +270,13 @@ export const createContact = async (
       await contact.save();
     }
 
+    if (req.body.isPrimary && hospitals && Array.isArray(hospitals) && hospitals.length > 0) {
+      await Hospital.updateMany(
+        { _id: { $in: hospitals } },
+        { $addToSet: { primaryContacts: contact._id } }
+      );
+    }
+
     await contact.populate({
       path: "hospitals",
       populate: [{ path: "idn" }, { path: "gpo" }],
@@ -423,6 +431,23 @@ export const updateContact = async (
         },
       ],
     }).populate("product", "name");
+
+    if (updatedContact) {
+      const targetHospitals = updatedContact.hospitals.map((h: any) =>
+        typeof h === "object" ? h._id : h
+      );
+      if (req.body.isPrimary === true) {
+        await Hospital.updateMany(
+          { _id: { $in: targetHospitals } },
+          { $addToSet: { primaryContacts: updatedContact._id } }
+        );
+      } else if (req.body.isPrimary === false) {
+        await Hospital.updateMany(
+          { _id: { $in: targetHospitals } },
+          { $pull: { primaryContacts: updatedContact._id } }
+        );
+      }
+    }
 
     res.status(200).json({
       success: true,

@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import Product from "../model/Product.ts";
 import Hospital from "../model/Hospital.ts";
 import { UserRole } from "../model/User.ts";
+import { buildFieldWordSearchCondition } from "../helper/searchHelper.ts";
 
 export const getDeals = async (
   req: AuthRequest,
@@ -101,19 +102,14 @@ export const getDeals = async (
         ]
         : []),
 
-      ...(searchQuery
+      ...(searchQuery.trim()
         ? [
           {
             $match: {
               $or: [
-                { "products.stage": { $regex: searchQuery, $options: "i" } },
-                {
-                  "hospital.hospitalName": {
-                    $regex: searchQuery,
-                    $options: "i",
-                  },
-                },
-              ],
+                buildFieldWordSearchCondition("products.stage", searchQuery),
+                buildFieldWordSearchCondition("hospital.hospitalName", searchQuery),
+              ].filter(Boolean),
             },
           },
         ]
