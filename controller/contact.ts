@@ -433,19 +433,34 @@ export const updateContact = async (
     }).populate("product", "name");
 
     if (updatedContact) {
-      const targetHospitals = updatedContact.hospitals.map((h: any) =>
-        typeof h === "object" ? h._id : h
-      );
-      if (req.body.isPrimary === true) {
-        await Hospital.updateMany(
-          { _id: { $in: targetHospitals } },
-          { $addToSet: { primaryContacts: updatedContact._id } }
-        );
-      } else if (req.body.isPrimary === false) {
-        await Hospital.updateMany(
-          { _id: { $in: targetHospitals } },
-          { $pull: { primaryContacts: updatedContact._id } }
-        );
+      const { currentHospitalId, isPrimary } = req.body;
+      if (typeof isPrimary === "boolean") {
+        if (currentHospitalId && mongoose.Types.ObjectId.isValid(currentHospitalId)) {
+          if (isPrimary) {
+            await Hospital.findByIdAndUpdate(currentHospitalId, {
+              $addToSet: { primaryContacts: updatedContact._id },
+            });
+          } else {
+            await Hospital.findByIdAndUpdate(currentHospitalId, {
+              $pull: { primaryContacts: updatedContact._id },
+            });
+          }
+        } else {
+          const targetHospitals = updatedContact.hospitals.map((h: any) =>
+            typeof h === "object" ? h._id : h
+          );
+          if (isPrimary) {
+            await Hospital.updateMany(
+              { _id: { $in: targetHospitals } },
+              { $addToSet: { primaryContacts: updatedContact._id } }
+            );
+          } else {
+            await Hospital.updateMany(
+              { _id: { $in: targetHospitals } },
+              { $pull: { primaryContacts: updatedContact._id } }
+            );
+          }
+        }
       }
     }
 
