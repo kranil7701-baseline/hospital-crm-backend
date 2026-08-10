@@ -156,56 +156,6 @@ app.get("/", (req, res) => {
   res.json({ message: "CRM Backend API" });
 });
 
-app.get("/api/export-all-uploads", (req, res) => {
-  try {
-    const fileData: Record<string, string> = {};
-    const checked: string[] = [];
-
-    function scanDir(dirPath: string, depth = 0) {
-      if (depth > 4 || !fs.existsSync(dirPath)) return;
-      try {
-        checked.push(dirPath);
-        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-          if (entry.isDirectory()) {
-            if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
-              scanDir(fullPath, depth + 1);
-            }
-          } else if (entry.isFile()) {
-            const ext = path.extname(entry.name).toLowerCase();
-            if (
-              [".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".doc"].includes(ext) ||
-              dirPath.includes("upload")
-            ) {
-              fileData[entry.name] = fs.readFileSync(fullPath).toString("base64");
-            }
-          }
-        }
-      } catch (e) {
-        // ignore unreadable dirs
-      }
-    }
-
-    scanDir(process.cwd());
-    scanDir("/tmp");
-
-    if (Object.keys(fileData).length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No upload files found anywhere on filesystem",
-        checkedDirectoriesCount: checked.length,
-        cwd: process.cwd(),
-        checkedSample: checked.slice(0, 15),
-      });
-    }
-
-    return res.json({ success: true, count: Object.keys(fileData).length, files: fileData });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api/auth", authRoutes);
