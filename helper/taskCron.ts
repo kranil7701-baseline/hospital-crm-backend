@@ -96,7 +96,7 @@ export const initTaskCron = () => {
               task.title,
               task.description || "",
               hospitalName,
-              task.dueDate,
+              task.dueDate || new Date(),
               daysLeft,
             );
 
@@ -106,7 +106,7 @@ export const initTaskCron = () => {
               try {
                 await sendPushToUsers([taskUser._id.toString()], {
                   title: `${daysLeft}-Day Task Reminder: ${task.title}`,
-                  message: `Task is due on ${task.dueDate.toDateString()} for ${hospitalName}.`,
+                  message: `Task is due on ${task.dueDate ? task.dueDate.toDateString() : "N/A"} for ${hospitalName}.`,
                   url: `${process.env.FRONTEND_URL || "#"}${process.env.FRONTEND_URL ? `/tasks/${task._id}` : ""}`,
                 });
 
@@ -190,7 +190,7 @@ export const initTaskCron = () => {
             <p><strong>Task details:</strong></p>
             <ul>
               <li><strong>Hospital:</strong> ${hospitalName}</li>
-              <li><strong>Due Date & Time:</strong> ${task.dueDate.toLocaleString()}</li>
+              <li><strong>Due Date & Time:</strong> ${task.dueDate ? task.dueDate.toLocaleString() : "No due date"}</li>
               <li><strong>Description:</strong> ${task.description || "No description provided"}</li>
             </ul>
             <p>Please review the task and take any necessary actions.</p>
@@ -204,7 +204,7 @@ export const initTaskCron = () => {
             try {
               await sendPushToUsers([taskUser._id.toString()], {
                 title: `Task Reminder: ${task.title}`,
-                message: `Task is due on ${task.dueDate.toLocaleString()} for ${hospitalName}.`,
+                message: `Task is due on ${task.dueDate ? task.dueDate.toLocaleString() : "N/A"} for ${hospitalName}.`,
                 url: `${process.env.FRONTEND_URL || "#"}${process.env.FRONTEND_URL ? `/tasks/${task._id}` : ""}`,
               });
               sentAtLeastOnce = true;

@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ITask extends Document {
     title: string;
     description: string;
-    dueDate: Date;
+    dueDate?: Date;
     hospital: mongoose.Types.ObjectId;
     user: mongoose.Types.ObjectId;
     completed: boolean;
@@ -27,7 +27,7 @@ const TaskSchema: Schema = new Schema({
     },
     dueDate: {
         type: Date,
-        required: true,
+        required: false,
     },
     hospital: {
         type: Schema.Types.ObjectId,
