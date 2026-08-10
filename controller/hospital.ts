@@ -177,11 +177,28 @@ export const getHospitalByHospitalId = async (
     }
 
     // 2. Get contacts linked to hospital ✅
-    const contacts = await Contact.find({ hospitals: id })
+    const contacts = await Contact.find({
+      $or: [{ hospitals: id }, { hospital: id }],
+    })
       .select(
-        "firstName lastName phoneNumber designation email isPrimary product hospitals",
+        "firstName lastName phoneNumber designation email isPrimary product hospitals hospital",
       )
-      .populate("product", "name");
+      .populate("product", "name")
+      .populate("hospital", "hospitalName gpo idn")
+      .populate({
+        path: "hospitals",
+        select: "hospitalName gpo idn",
+        populate: [
+          {
+            path: "gpo",
+            select: "name -_id",
+          },
+          {
+            path: "idn",
+            select: "name -_id",
+          },
+        ],
+      });
 
     // 3. Get deals
     const rawDeals = await Deal.find({ hospital: id })
@@ -220,6 +237,9 @@ export const getHospitalByHospitalId = async (
 
     const annotatedContacts = contacts.map((c: any) => {
       const contactObj = c.toObject ? c.toObject() : { ...c };
+      if ((!contactObj.hospitals || contactObj.hospitals.length === 0) && contactObj.hospital) {
+        contactObj.hospitals = [contactObj.hospital];
+      }
       contactObj.isPrimary = primaryContactIds.includes(contactObj._id.toString());
       return contactObj;
     });

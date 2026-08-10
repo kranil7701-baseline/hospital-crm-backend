@@ -1013,7 +1013,9 @@ export const syncHospitalEmails = async (
     // Get all CRM users and hospital contacts
     const [users, contacts] = await Promise.all([
       User.find({ email: { $exists: true, $ne: "" } }).select("email _id"),
-      Contact.find({ hospitals: hospitalId }).select("email"),
+      Contact.find({
+        $or: [{ hospitals: hospitalId }, { hospital: hospitalId }],
+      }).select("email"),
     ]);
 
     const contactEmails = contacts

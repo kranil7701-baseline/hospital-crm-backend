@@ -51,11 +51,15 @@ export const getContacts = async (
     }
 
     if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
-      matchStage.hospitals = new mongoose.Types.ObjectId(hospitalId);
+      const hObjId = new mongoose.Types.ObjectId(hospitalId);
+      matchStage.$or = [
+        { hospitals: hObjId },
+        { hospital: hObjId },
+      ];
     }
 
     if (search.trim()) {
-      matchStage.$or = [
+      const searchConditions = [
         buildFieldWordSearchCondition("firstName", search),
         buildFieldWordSearchCondition("lastName", search),
         buildFieldWordSearchCondition("fullName", search),
@@ -63,13 +67,45 @@ export const getContacts = async (
         buildFieldWordSearchCondition("phoneNumber", search),
         buildFieldWordSearchCondition("hospitalDetails.hospitalName", search),
       ].filter(Boolean);
+
+      if (matchStage.$or) {
+        matchStage.$and = [
+          { $or: matchStage.$or },
+          { $or: searchConditions },
+        ];
+        delete matchStage.$or;
+      } else {
+        matchStage.$or = searchConditions;
+      }
     }
 
     const matchedContacts = await Contact.aggregate([
       {
+        $addFields: {
+          effectiveHospitals: {
+            $cond: {
+              if: {
+                $and: [
+                  { $isArray: "$hospitals" },
+                  { $gt: [{ $size: "$hospitals" }, 0] },
+                ],
+              },
+              then: "$hospitals",
+              else: {
+                $cond: {
+                  if: { $ne: ["$hospital", null] },
+                  then: ["$hospital"],
+                  else: [],
+                },
+              },
+            },
+          },
+        },
+      },
+      {
         $lookup: {
           from: "hospitals",
-          localField: "hospitals",
+          localField: "effectiveHospitals",
           foreignField: "_id",
           as: "hospitalDetails",
         },
@@ -115,6 +151,7 @@ export const getContacts = async (
     const contacts = await Contact.find({ _id: { $in: paginatedIds } })
       .select("-createdAt -updatedAt -__v -isPrimary")
       .populate("product", "name")
+      .populate("hospital", "hospitalName gpo idn")
       .populate({
         path: "hospitals",
         select: "hospitalName gpo idn",
@@ -135,14 +172,25 @@ export const getContacts = async (
       })
       .lean();
 
+    const formattedContacts = contacts.map((c: any) => {
+      let hospList = Array.isArray(c.hospitals) && c.hospitals.length > 0 ? c.hospitals : [];
+      if (hospList.length === 0 && c.hospital) {
+        hospList = [c.hospital];
+      }
+      return {
+        ...c,
+        hospitals: hospList,
+      };
+    });
+
     res.status(200).json({
       success: true,
       page,
       limit,
       totalContacts: total,
       totalPages: Math.ceil(total / limit),
-      hasMore: total > skip + contacts.length,
-      data: contacts,
+      hasMore: total > skip + formattedContacts.length,
+      data: formattedContacts,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -192,13 +240,18 @@ export const getContactById = async (
       return;
     }
 
-    const contact = await Contact.findById(id)
+    const contact: any = await Contact.findById(id)
       .populate(
         "hospitals",
         "hospitalName gpo idn city state zip idn gpo teamHospital magnetHospital _id address location",
       )
+      .populate(
+        "hospital",
+        "hospitalName gpo idn city state zip idn gpo teamHospital magnetHospital _id address location",
+      )
       .populate("product", "name _id")
-      .select("-createdAt -updatedAt -__v");
+      .select("-createdAt -updatedAt -__v")
+      .lean();
 
     if (!contact) {
       res.status(404).json({
@@ -206,6 +259,10 @@ export const getContactById = async (
         message: "Contact not found",
       });
       return;
+    }
+
+    if ((!contact.hospitals || contact.hospitals.length === 0) && contact.hospital) {
+      contact.hospitals = [contact.hospital];
     }
 
     res.status(200).json({
@@ -238,7 +295,10 @@ export const createContact = async (
 
     if (contact) {
       // Add any new hospitals to their hospitals list
-      const existingHospitals = contact.hospitals.map((h: any) => h.toString());
+      const existingHospitals = (contact.hospitals || []).map((h: any) => h.toString());
+      if (contact.hospital && !existingHospitals.includes(contact.hospital.toString())) {
+        existingHospitals.push(contact.hospital.toString());
+      }
       const newHospitals = hospitals.filter((h: string) => !existingHospitals.includes(h));
 
       if (newHospitals.length === 0) {
@@ -249,8 +309,12 @@ export const createContact = async (
         return;
       }
 
+      if (!contact.hospitals) contact.hospitals = [];
       contact.hospitals.push(...newHospitals.map((id: string) => new mongoose.Types.ObjectId(id)));
-      
+      if (contact.hospitals.length > 0 && contact.hospitals[0]) {
+        contact.hospital = contact.hospitals[0];
+      }
+
       // Update other fields if provided in req.body
       if (req.body.firstName) contact.firstName = req.body.firstName;
       if (req.body.lastName) contact.lastName = req.body.lastName;
@@ -264,6 +328,7 @@ export const createContact = async (
       // Create new contact
       const contactData = {
         ...req.body,
+        hospital: hospitals[0],
         user: req.user?._id,
       };
       contact = new Contact(contactData);
@@ -424,27 +489,37 @@ export const updateContact = async (
     const updateData = { ...req.body };
     if (!updateData.hospitals || !Array.isArray(updateData.hospitals) || updateData.hospitals.length === 0) {
       delete updateData.hospitals;
+    } else {
+      updateData.hospital = updateData.hospitals[0];
     }
 
-    const updatedContact = await Contact.findByIdAndUpdate(id, updateData, {
+    const updatedContact: any = await Contact.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
-    }).populate({
-      path: "hospitals",
-      select: "hospitalName gpo idn",
-      populate: [
-        {
-          path: "gpo",
-          select: "name -_id",
-        },
-        {
-          path: "idn",
-          select: "name -_id",
-        },
-      ],
-    }).populate("product", "name");
+    })
+      .populate("hospital", "hospitalName gpo idn")
+      .populate({
+        path: "hospitals",
+        select: "hospitalName gpo idn",
+        populate: [
+          {
+            path: "gpo",
+            select: "name -_id",
+          },
+          {
+            path: "idn",
+            select: "name -_id",
+          },
+        ],
+      })
+      .populate("product", "name")
+      .lean();
 
     if (updatedContact) {
+      if ((!updatedContact.hospitals || updatedContact.hospitals.length === 0) && updatedContact.hospital) {
+        updatedContact.hospitals = [updatedContact.hospital];
+      }
+
       const { currentHospitalId, isPrimary } = req.body;
       if (typeof isPrimary === "boolean") {
         if (currentHospitalId && mongoose.Types.ObjectId.isValid(currentHospitalId)) {
@@ -458,7 +533,7 @@ export const updateContact = async (
             });
           }
         } else {
-          const targetHospitals = updatedContact.hospitals.map((h: any) =>
+          const targetHospitals = (updatedContact.hospitals || []).map((h: any) =>
             typeof h === "object" ? h._id : h
           );
           if (isPrimary) {

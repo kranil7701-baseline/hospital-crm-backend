@@ -26,7 +26,10 @@ export const getDashboardTasks = async (
       return;
     }
 
-    const isAdminOrExecutive = userRole === "Admin" || userRole === "Executive";
+    const isAdminOrExecutive =
+      userRole === UserRole.ADMIN ||
+      userRole === UserRole.EXECUTIVE ||
+      userRole === UserRole.CUSTOMER_SUCCESS;
 
     const skip = (page - 1) * limit;
 
@@ -73,7 +76,7 @@ export const getDashboardTasks = async (
           dueDate: {
             $lt: now,
           },
-          completed: false,
+          completed: { $ne: true },
         },
       ],
     };
@@ -240,7 +243,7 @@ export const getTasks = async (req: Request, res: Response): Promise<void> => {
     // By default, hide completed tasks. Only show all (including completed) when showAll=true.
     const showAll = req.query.showAll === "true";
     if (!showAll) {
-      matchStage.completed = false;
+      matchStage.completed = { $ne: true };
     }
 
     if (search) {

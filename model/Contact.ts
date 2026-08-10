@@ -5,6 +5,7 @@ export interface IContact extends Document {
   lastName?: string;
   user: mongoose.Types.ObjectId;
   designation: string;
+  hospital?: mongoose.Types.ObjectId;
   hospitals: mongoose.Types.ObjectId[];
   product?: mongoose.Types.ObjectId[];
   phoneNumber: string;
@@ -32,6 +33,10 @@ const ContactSchema: Schema = new Schema(
       type: String,
       // required: true,
       trim: true,
+    },
+    hospital: {
+      type: Schema.Types.ObjectId,
+      ref: "Hospital",
     },
     hospitals: [
       {

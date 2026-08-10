@@ -13,6 +13,7 @@ import morgan from "morgan";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import path from "path";
+import fs from "fs";
 
 import hospitalRoutes from "./routes/hospital.ts";
 import idnRoutes from "./routes/idn.ts";
@@ -154,6 +155,28 @@ app.use(async (req, res, next) => {
 app.get("/", (req, res) => {
   res.json({ message: "CRM Backend API" });
 });
+
+app.get("/api/export-all-uploads", (req, res) => {
+  try {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      return res.status(404).json({ success: false, message: "Uploads folder not found" });
+    }
+    const files = fs.readdirSync(uploadsDir);
+    const fileData: Record<string, string> = {};
+    for (const file of files) {
+      const filePath = path.join(uploadsDir, file);
+      if (fs.statSync(filePath).isFile()) {
+        fileData[file] = fs.readFileSync(filePath).toString("base64");
+      }
+    }
+    return res.json({ success: true, count: Object.keys(fileData).length, files: fileData });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/hospital", hospitalRoutes);
