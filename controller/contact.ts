@@ -336,6 +336,11 @@ export const deleteContact = async (
     const hospitalId = req.query.hospitalId as string;
 
     if (hospitalId && mongoose.Types.ObjectId.isValid(hospitalId)) {
+      // Remove contact from hospital's primaryContacts array
+      await Hospital.findByIdAndUpdate(hospitalId, {
+        $pull: { primaryContacts: contact._id },
+      });
+
       // Remove hospital ID from contact's hospitals array
       contact.hospitals = contact.hospitals.filter(
         (h) => h.toString() !== hospitalId
@@ -355,7 +360,14 @@ export const deleteContact = async (
         });
       }
     } else {
-      // Delete globally
+      // Delete globally: remove contact ID from all associated hospitals' primaryContacts
+      if (contact.hospitals && contact.hospitals.length > 0) {
+        await Hospital.updateMany(
+          { _id: { $in: contact.hospitals } },
+          { $pull: { primaryContacts: contact._id } }
+        );
+      }
+
       await Contact.findByIdAndDelete(id);
       res.status(200).json({
         success: true,
