@@ -158,19 +158,41 @@ app.get("/", (req, res) => {
 
 app.get("/api/export-all-uploads", (req, res) => {
   try {
-    const uploadsDir = path.join(process.cwd(), "uploads");
-    if (!fs.existsSync(uploadsDir)) {
-      return res.status(404).json({ success: false, message: "Uploads folder not found" });
-    }
-    const files = fs.readdirSync(uploadsDir);
+    const candidateDirs = [
+      path.join(process.cwd(), "uploads"),
+      path.join(process.cwd(), "backend", "uploads"),
+      path.join(process.cwd(), "dist", "uploads"),
+      path.join(process.cwd(), "public", "uploads"),
+      "/var/data/uploads",
+      "/tmp/uploads",
+    ];
+
     const fileData: Record<string, string> = {};
-    for (const file of files) {
-      const filePath = path.join(uploadsDir, file);
-      if (fs.statSync(filePath).isFile()) {
-        fileData[file] = fs.readFileSync(filePath).toString("base64");
+    const checked: string[] = [];
+
+    for (const dir of candidateDirs) {
+      checked.push(dir);
+      if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const filePath = path.join(dir, file);
+          if (fs.statSync(filePath).isFile()) {
+            fileData[file] = fs.readFileSync(filePath).toString("base64");
+          }
+        }
       }
     }
-    return res.json({ success: true, count: Object.keys(fileData).length, files: fileData });
+
+    if (Object.keys(fileData).length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No upload files found in candidate directories",
+        checked,
+        cwd: process.cwd(),
+      });
+    }
+
+    return res.json({ success: true, count: Object.keys(fileData).length, files: fileData, checked });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
