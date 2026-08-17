@@ -12,7 +12,16 @@ export const getDeals = async (
   res: Response,
 ): Promise<void> => {
   try {
-    const searchQuery = (req.query.search as string) || "";
+    const rawSearch =
+      (req.query.search as string) ||
+      (req.query.searchQuery as string) ||
+      (req.query.query as string) ||
+      (req.query.q as string) ||
+      "";
+    const searchQuery =
+      rawSearch === "undefined" || rawSearch === "null"
+        ? ""
+        : rawSearch.trim();
     const userId = req.query.userId as string;
     const productIdsRaw = req.query.productIds as string | string[];
     const gpoId = req.query.gpoId as string;
@@ -23,11 +32,7 @@ export const getDeals = async (
         ? 15
         : null;
     const skip = page ? (page - 1) * (limit || 15) : 0;
-    const usePaginationFilter = page !== null && limit !== null;
     const dealStageRaw = req.query.dealStage;
-    const sortBy = (req.query.sortBy as string) || "dealAmount";
-    const sortOrder = (req.query.sortOrder as string) === "asc" ? 1 : -1;
-
     const dealStages = (
       Array.isArray(dealStageRaw) ? dealStageRaw : [dealStageRaw]
     )
@@ -36,6 +41,10 @@ export const getDeals = async (
       .map((stage) => stage.trim())
       .filter(Boolean);
 
+    const usePaginationFilter =
+      page !== null && limit !== null && dealStages.length === 0;
+    const sortBy = (req.query.sortBy as string) || "dealAmount";
+    const sortOrder = (req.query.sortOrder as string) === "asc" ? 1 : -1;
     let productIds: mongoose.Types.ObjectId[] = [];
     if (productIdsRaw) {
       const idsArray = Array.isArray(productIdsRaw)
@@ -1408,7 +1417,16 @@ export const getClosedWonDeals = async (
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
+    const rawSearch =
+      (req.query.search as string) ||
+      (req.query.searchQuery as string) ||
+      (req.query.query as string) ||
+      (req.query.q as string) ||
+      "";
+    const search =
+      rawSearch === "undefined" || rawSearch === "null"
+        ? ""
+        : rawSearch.trim();
     const skip = (page - 1) * limit;
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
@@ -1421,16 +1439,6 @@ export const getClosedWonDeals = async (
     const dealMatchFilter = isAdminOrCustomerSuccessOrExecutive
       ? {}
       : { user: objectUserId };
-
-    const countPipeline: any[] = [
-      { $match: dealMatchFilter },
-      { $unwind: "$products" },
-      { $match: { "products.stage": "Closed Won" } },
-      { $count: "count" },
-    ];
-
-    const totalCountResult = await Deal.aggregate(countPipeline);
-    const totalCount = totalCountResult[0]?.count || 0;
 
     const pipeline: any[] = [
       { $match: dealMatchFilter },
@@ -1449,44 +1457,11 @@ export const getClosedWonDeals = async (
       },
       { $unwind: "$products.productDetail" },
 
-      // Sort by nearest close date first, then paginate
-      {
-        $addFields: {
-          sortDate: {
-            $ifNull: ["$products.expectedCloseDate", "$products.dealDate"],
-          },
-        },
-      },
-      { $sort: { sortDate: 1, "products._id": 1 } },
-      { $skip: skip },
-      { $limit: limit },
-
-      // Group by hospital
-      {
-        $group: {
-          _id: "$hospital",
-          products: {
-            $push: {
-              _id: "$products._id",
-              product: "$products.productDetail",
-              dealAmount: "$products.dealAmount",
-              quantity: "$products.quantity",
-              stage: "$products.stage",
-              expectedCloseDate: "$products.expectedCloseDate",
-              dealDate: "$products.dealDate",
-            },
-          },
-          totalAmount: { $sum: "$products.dealAmount" },
-          productsCount: { $sum: 1 },
-          nearestCloseDate: { $min: "$sortDate" },
-        },
-      },
-
       // Lookup hospital details
       {
         $lookup: {
           from: "hospitals",
-          localField: "_id",
+          localField: "hospital",
           foreignField: "_id",
           as: "hospital",
         },
@@ -1504,6 +1479,37 @@ export const getClosedWonDeals = async (
         ]
         : []),
 
+      // Sort by nearest close date first
+      {
+        $addFields: {
+          sortDate: {
+            $ifNull: ["$products.expectedCloseDate", "$products.dealDate"],
+          },
+        },
+      },
+
+      // Group by hospital
+      {
+        $group: {
+          _id: "$hospital._id",
+          hospital: { $first: "$hospital" },
+          products: {
+            $push: {
+              _id: "$products._id",
+              product: "$products.productDetail",
+              dealAmount: "$products.dealAmount",
+              quantity: "$products.quantity",
+              stage: "$products.stage",
+              expectedCloseDate: "$products.expectedCloseDate",
+              dealDate: "$products.dealDate",
+            },
+          },
+          totalAmount: { $sum: "$products.dealAmount" },
+          productsCount: { $sum: 1 },
+          nearestCloseDate: { $min: "$sortDate" },
+        },
+      },
+
       {
         $project: {
           _id: "$hospital._id",
@@ -1517,10 +1523,29 @@ export const getClosedWonDeals = async (
       },
 
       { $sort: { nearestCloseDate: 1, hospitalName: 1 } },
+
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: "count" }],
+          overallStats: [
+            {
+              $group: {
+                _id: null,
+                totalAmount: { $sum: "$totalAmount" },
+                totalProducts: { $sum: "$productsCount" },
+              },
+            },
+          ],
+        },
+      },
     ];
 
     const result = await Deal.aggregate(pipeline);
-    const data = (result || []).map((h: any) => {
+    const facetResult = result[0] || {};
+
+    let data = facetResult.data || [];
+    data = data.map((h: any) => {
       if (h.products) {
         h.products = h.products.map((p: any) => ({
           ...p,
@@ -1530,13 +1555,11 @@ export const getClosedWonDeals = async (
       return h;
     });
 
-    const overallStats = data.reduce(
-      (acc: any, hospital: any) => ({
-        totalAmount: acc.totalAmount + (hospital.totalAmount || 0),
-        totalProducts: acc.totalProducts + (hospital.productsCount || 0),
-      }),
-      { totalAmount: 0, totalProducts: 0 },
-    );
+    const totalCount = facetResult.totalCount?.[0]?.count || 0;
+    const overallStats = facetResult.overallStats?.[0] || {
+      totalAmount: 0,
+      totalProducts: 0,
+    };
 
     res.status(200).json({
       success: true,
@@ -1575,7 +1598,16 @@ export const getImplementedDeals = async (
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
+    const rawSearch =
+      (req.query.search as string) ||
+      (req.query.searchQuery as string) ||
+      (req.query.query as string) ||
+      (req.query.q as string) ||
+      "";
+    const search =
+      rawSearch === "undefined" || rawSearch === "null"
+        ? ""
+        : rawSearch.trim();
     const skip = (page - 1) * limit;
 
     const objectUserId = new mongoose.Types.ObjectId(userId);
@@ -1588,6 +1620,27 @@ export const getImplementedDeals = async (
     const dealMatchFilter = isAdminOrCustomerSuccessOrExecutive
       ? {}
       : { user: objectUserId };
+
+
+    //  const pipeline = [
+    //   { $match: { "products.stage": "Closed Won" } },
+    //   { $sort: { sortDate: 1 } },
+
+    //   
+    //   { $skip: skip },
+    //   { $limit: limit }, 
+
+    //   
+    //   { $group: { _id: "$hospital", ... } },
+    //   { $lookup: { from: "hospitals", ... } },
+    //   { $unwind: "$hospital" },
+
+    //   
+    //   ...(search ? [
+    //     { $match: { "hospital.hospitalName": { $regex: search, $options: "i" } } }
+    //   ] : []),
+    // ];
+
 
     const pipeline: any[] = [
       { $match: dealMatchFilter },

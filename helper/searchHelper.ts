@@ -1,10 +1,10 @@
 export function escapeRegex(text: string): string {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  return text.replace(/[-[\]{}()*+?.,\\^$|#]/g, "\\$&");
 }
 
 export function buildFieldWordSearchCondition(fieldName: string, search: string) {
   const trimmed = (search || "").trim();
-  if (!trimmed) return null;
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") return null;
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length <= 1) {
     return { [fieldName]: { $regex: escapeRegex(trimmed), $options: "i" } };
@@ -15,3 +15,4 @@ export function buildFieldWordSearchCondition(fieldName: string, search: string)
     })),
   };
 }
+
