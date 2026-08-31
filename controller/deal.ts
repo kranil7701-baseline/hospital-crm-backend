@@ -25,6 +25,11 @@ export const getDeals = async (
     const userId = req.query.userId as string;
     const productIdsRaw = req.query.productIds as string | string[];
     const gpoId = req.query.gpoId as string;
+    const leadSourceRaw = req.query.leadSource as string;
+    const leadSource = leadSourceRaw
+      ? decodeURIComponent(leadSourceRaw.replace(/\+/g, " ")).trim()
+      : "";
+
     const page = req.query.page ? parseInt(req.query.page as string) : null;
     const limit = req.query.limit
       ? parseInt(req.query.limit as string)
@@ -106,6 +111,29 @@ export const getDeals = async (
           {
             $match: {
               "hospital.gpo": new mongoose.Types.ObjectId(gpoId),
+            },
+          },
+        ]
+        : []),
+
+      ...(leadSource && leadSource !== "all"
+        ? [
+          {
+            $match: {
+              ...(leadSource === "none"
+                ? {
+                  $or: [
+                    { "products.leadSource": { $exists: false } },
+                    { "products.leadSource": null },
+                    { "products.leadSource": "" },
+                    { "products.leadSource": "none" },
+                  ],
+                }
+                : {
+                  "products.leadSource": {
+                    $regex: new RegExp(`^${leadSource.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}$`, "i"),
+                  },
+                }),
             },
           },
         ]
@@ -515,6 +543,12 @@ export const getDeals = async (
     ];
 
     const result = await Deal.aggregate(pipeline);
+
+    console.log("[Aggregate Debug] leadSource:", leadSource);
+    console.log("[Aggregate Debug] Result deals count:", result[0]?.deals?.length);
+    if (result[0]?.deals?.length > 0) {
+      console.log("[Aggregate Debug] Sample leadSources:", result[0].deals.slice(0, 5).map((d: any) => d.leadSource));
+    }
 
     const deals = result[0]?.deals || [];
     const totalDealsCount = result[0]?.totalDealsCount[0]?.count || 0;

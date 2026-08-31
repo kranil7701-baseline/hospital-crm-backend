@@ -82,7 +82,6 @@ export const initDealCron = () => {
 
               const subject = `Deal Closing Reminder - ${hospitalName} (${daysLeft} days left)`;
               const content = `
-              <p>Testing Lalit</p>
               <p>Hello ${user.name},</p>
               <p>This is a reminder that the deal for <strong>${hospitalName}</strong> is approaching its expected close date.</p>
               <p><strong>Deal Details:</strong></p>
