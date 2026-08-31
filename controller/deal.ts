@@ -544,11 +544,6 @@ export const getDeals = async (
 
     const result = await Deal.aggregate(pipeline);
 
-    console.log("[Aggregate Debug] leadSource:", leadSource);
-    console.log("[Aggregate Debug] Result deals count:", result[0]?.deals?.length);
-    if (result[0]?.deals?.length > 0) {
-      console.log("[Aggregate Debug] Sample leadSources:", result[0].deals.slice(0, 5).map((d: any) => d.leadSource));
-    }
 
     const deals = result[0]?.deals || [];
     const totalDealsCount = result[0]?.totalDealsCount[0]?.count || 0;
@@ -594,6 +589,30 @@ export const getDeals = async (
               : []),
 
             { $unwind: "$products" },
+
+            ...(leadSource && leadSource !== "all"
+              ? [
+                {
+                  $match: {
+                    ...(leadSource === "none"
+                      ? {
+                          $or: [
+                            { "products.leadSource": { $exists: false } },
+                            { "products.leadSource": null },
+                            { "products.leadSource": "" },
+                            { "products.leadSource": "none" },
+                          ],
+                        }
+                      : {
+                          "products.leadSource": {
+                            $regex: new RegExp(`^${leadSource.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}$`, "i"),
+                          },
+                        }),
+                  },
+                },
+              ]
+              : []),
+
             {
               $match: {
                 "products.stage": {
