@@ -29,6 +29,10 @@ export const getDeals = async (
     const leadSource = leadSourceRaw
       ? decodeURIComponent(leadSourceRaw.replace(/\+/g, " ")).trim()
       : "";
+    const leadSourceDetailsRaw = req.query.leadSourceDetails as string;
+    const leadSourceDetails = leadSourceDetailsRaw
+      ? decodeURIComponent(leadSourceDetailsRaw.replace(/\+/g, " ")).trim()
+      : "";
 
     const page = req.query.page ? parseInt(req.query.page as string) : null;
     const limit = req.query.limit
@@ -133,6 +137,13 @@ export const getDeals = async (
                   "products.leadSource": {
                     $regex: new RegExp(`^${leadSource.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}$`, "i"),
                   },
+                  ...(leadSourceDetails
+                    ? {
+                        "products.leadSourceDetails": {
+                          $regex: new RegExp(leadSourceDetails.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i"),
+                        },
+                      }
+                    : {}),
                 }),
             },
           },
@@ -607,6 +618,13 @@ export const getDeals = async (
                           "products.leadSource": {
                             $regex: new RegExp(`^${leadSource.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}$`, "i"),
                           },
+                          ...(leadSourceDetails
+                            ? {
+                                "products.leadSourceDetails": {
+                                  $regex: new RegExp(leadSourceDetails.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i"),
+                                },
+                              }
+                            : {}),
                         }),
                   },
                 },
